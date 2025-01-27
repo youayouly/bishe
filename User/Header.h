@@ -21,6 +21,7 @@ All rights reserved
 #define __HEADER_H
 
 #include "uart.h"
+#include "servo.h"
 
 //头文件包含
 #include "stm32f10x.h"

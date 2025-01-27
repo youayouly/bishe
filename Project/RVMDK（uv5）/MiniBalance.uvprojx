@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>STM32F10X_HD, USE_STDPERIPH_DRIVER</Define>
               <Undefine></Undefine>
-              <IncludePath>..\..\Libraries\CMSIS;..\..\User;..\..\Libraries\FWlib\inc;..\..\User\CONTROL;..\..\User\MPU6050\DMP;..\..\User\MPU6050\IIC;..\..\User\MPU6050\MPU6050;..\..\User\MPU6050\filter;..\..\User\HARDWARE;..\..\User\HARDWARE\usartx;..\..\User\HARDWARE\uart</IncludePath>
+              <IncludePath>..\..\Libraries\CMSIS;..\..\User;..\..\Libraries\FWlib\inc;..\..\User\CONTROL;..\..\User\MPU6050\DMP;..\..\User\MPU6050\IIC;..\..\User\MPU6050\MPU6050;..\..\User\MPU6050\filter;..\..\User\HARDWARE;..\..\User\HARDWARE\usartx;..\..\User\HARDWARE\uart;..\..\User\HARDWARE\servo</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -643,6 +643,11 @@
               <FileName>uart.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\User\HARDWARE\uart\uart.c</FilePath>
+            </File>
+            <File>
+              <FileName>servo.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\User\HARDWARE\servo\servo.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1368,6 +1373,11 @@
               <FileName>uart.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\User\HARDWARE\uart\uart.c</FilePath>
+            </File>
+            <File>
+              <FileName>servo.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\User\HARDWARE\servo\servo.c</FilePath>
             </File>
           </Files>
         </Group>

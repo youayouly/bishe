@@ -71,5 +71,8 @@ void USART_SendByte(uint8_t data)
     while (USART_GetFlagStatus(OPENMV_USARTx, USART_FLAG_TXE) == RESET);
     // ·¢ËÍÊý¾Ý
     USART_SendData(OPENMV_USARTx, data);
+  
+  
+  
 }
 

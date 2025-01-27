@@ -54,6 +54,8 @@ int main(void)
 	BEEP_OFF;
     if(Car_Num == Akm_Car)
 		Servo_Init(9999,71);									//阿克曼车型初始化舵机
+    Servo_Init3(9999,71);
+    
 	Car_Perimeter_Init();										//初始化轮子周长和轮距
 	TIMING_TIM_Init(7199,49);									//5ms中断控制，大部分控制逻辑在里面
 	while(1)

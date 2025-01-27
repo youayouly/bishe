@@ -94,6 +94,7 @@ All rights reserved
 #define Frequency							200.0f			//每5ms读取一次编码器的值
 #define SERVO_INIT 							1500  			//舵机零点PWM值
 
+#define SERVO3_INIT 							500  			//舵机零点PWM值
 
 #define Encoder_resolution_Photoelectric	500.0f			//光电编码器500线
 #define Encoder_resolution_Hall 			13.0f			//霍尔编码器13线
