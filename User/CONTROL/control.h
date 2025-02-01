@@ -93,8 +93,8 @@ All rights reserved
 #define Angle_To_Rad						57.295779513f	//角度制转弧度制，除以这个参数
 #define Frequency							200.0f			//每5ms读取一次编码器的值
 #define SERVO_INIT 							1500  			//舵机零点PWM值
-
-#define SERVO3_INIT 							500  			//舵机零点PWM值
+#define SERVO3_INIT 							550  			
+//舵机零点PWM值 500 -  550 0 600 1丝丝 825能过乒乓球，850要倒转  1100是顶
 
 #define Encoder_resolution_Photoelectric	500.0f			//光电编码器500线
 #define Encoder_resolution_Hall 			13.0f			//霍尔编码器13线

@@ -1,0 +1,86 @@
+OpenCV会逐像素检查HSV图像中每个像素的色调、饱和度和亮度是否在你设定的阈值范围内。
+如果满足条件，则该像素会变成 白色（255），否则为 黑色（0）。
+所以，尽管在阈值范围内有多个要素（H、S、V），最终掩膜结果仍然是 二值化图像。
+
+
+掩膜代码，效果不是很好，转而用二值化代码
+
+import cv2
+import numpy as np
+
+# 使用 USB 摄像头
+cap = cv2.VideoCapture(0)  # 0 表示默认的 USB 摄像头
+
+# 设置分辨率（可选） 远了看不到
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+# 等待摄像头初始化
+import time
+time.sleep(0.1)
+
+# 定义橙色的小球 HSV 范围  颜色追踪方法  就是白色背景不太好识别
+lower_orange = np.array([0, 150, 150], dtype=np.uint8)  # 低值范围
+upper_orange = np.array([20, 255, 255], dtype=np.uint8)  # 高值范围
+
+# 循环读取视频帧
+while True:
+    # 读取每一帧
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    # 将图像从BGR转换到HSV，便于机器识别
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    
+    # #1自适应阈值无效，出现过白色黑线 2提升目标亮度 看不见
+    # h, s, v = cv2.split(hsv)
+
+    # # 增加亮度（V通道）
+    # v = cv2.add(v, 50)  # 提高亮度，50是增量，可以根据需要调整
+    # hsv = cv2.merge((h, s, v))
+    # bright_image = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+        
+    # 创建一个掩模，黑白图像，用来确定图像范围 已经有一个阈值
+    mask = cv2.inRange(hsv, lower_orange, upper_orange)
+    
+    
+    #     # 将图像转换为灰度图像
+    # gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # # 使用阈值进行灰度图像的二值化
+    # _, mask = cv2.threshold(gray_frame, 127, 255, cv2.THRESH_BINARY)  # 127 是阈值，可以根据情况调整
+    # cv2.imshow("mask", mask)
+
+
+    # 进行形态学操作（可选，用于去除噪声）
+    mask = cv2.erode(mask, None, iterations=2)
+    mask = cv2.dilate(mask, None, iterations=2)
+
+    # 找到轮廓
+    contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+
+    # 遍历所有轮廓
+    for contour in contours:
+        if cv2.contourArea(contour) > 500:  # 如果轮廓的面积大于500，可能是乒乓球
+            (x, y, w, h) = cv2.boundingRect(contour)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)  # 绘制边界框
+
+     # 提取小球区域的HSV值
+            ball_hsv = hsv[y:y+h, x:x+w]  # 获取小球区域的HSV
+            avg_hsv = np.mean(ball_hsv, axis=(0, 1))  # 计算该区域的平均HSV值
+            hsv_text = f"HSV: ({int(avg_hsv[0])}, {int(avg_hsv[1])}, {int(avg_hsv[2])})"  # 转为字符串
+      # 显示HSV值
+            cv2.putText(frame, hsv_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    # 显示图像
+    cv2.imshow("Frame", frame)
+
+
+    # 按'q'键退出
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# 释放摄像头并关闭窗口
+cap.release()
+cv2.destroyAllWindows()

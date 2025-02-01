@@ -5,6 +5,6 @@
 #include "Header.h"
 
 void UART_Init(void);
-void USART_Send(uint8_t data);
+void USART_SendByte(uint8_t byte);
 
 #endif

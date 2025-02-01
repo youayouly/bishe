@@ -27,19 +27,19 @@ int main(void)
 	
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);//中断优先级分组
 	LED_GPIO_Config();					//LED初始化，PC2和PC3
-	Key_GPIO_Config();					//按键初始化，PA0和PC13
-	BEEP_GPIO_Config();					//蜂鸣器初始化，PA15
+	Key_GPIO_Config();					//按键初始化，PA0和PC13  按键来使用雷达
+//	BEEP_GPIO_Config();					//蜂鸣器初始化，PA15
 	OLED_Init();						//OLED初始化
-	Encoder_Init();						//编码器初始化，TIM4和TIM8
+	Encoder_Init();						//编码器初始化，TIM4和TIM8 
 	Motor_Init(7199,0);					//电机PWM初始化，TIM3
 	DEBUG_USART_Init();					//调试串口设置，串口1，波特率115200
 	BLUETOOTH_USART_Init();				//蓝牙串口设置，串口3，波特率9600
-	LIDAR_USART_Init();					//雷达串口设置，串口5，波特率115200
+//	LIDAR_USART_Init();					//雷达串口设置，串口5，波特率115200
   
   
   //串口2
   UART_Init();
-  USART_SendByte('1');
+  USART_Send('1');
   
 	PS2_Init();							//初始化PS2手柄接口
 	PS2_SetInit();						//PS2手柄配置为模拟量模式
@@ -57,7 +57,7 @@ int main(void)
     Servo_Init3(9999,71);
     
 	Car_Perimeter_Init();										//初始化轮子周长和轮距
-	TIMING_TIM_Init(7199,49);									//5ms中断控制，大部分控制逻辑在里面
+	TIMING_TIM_Init(7199,49);									//5ms中断控制，大部分控制逻辑在里面 ->监控按键，control 雷达-》总控制 其他是5ms更新一次数据
 	while(1)
 	{
 		Robot_Select();
@@ -79,7 +79,8 @@ int main(void)
 		}
 		delay_flag=1;	//使用50ms延时时，雷达数据会出现异常
 		delay_50=0;
-		while(delay_flag);	     								//通过定时中断实现的50ms延时，主要用于示波器				
+		while(delay_flag);	     								//通过定时中断实现的50ms延时，主要用于示波器	
+      //避免屏幕刷新的过快  主要用于示波器	一般是20次每秒
 	}
 }
 
