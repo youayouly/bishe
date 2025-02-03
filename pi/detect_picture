@@ -20,15 +20,15 @@ cv2.createTrackbar("Orange V1", "HSV Adjust", 100, 255, lambda x: x)
 cv2.createTrackbar("Orange V2", "HSV Adjust", 255, 255, lambda x: x)
 
 # 白色乒乓球参数
-cv2.createTrackbar("White H1", "HSV Adjust", 0, 179, lambda x: x)
-cv2.createTrackbar("White H2", "HSV Adjust", 179, 179, lambda x: x)
+cv2.createTrackbar("White H1", "HSV Adjust", 74, 179, lambda x: x)
+cv2.createTrackbar("White H2", "HSV Adjust", 132, 179, lambda x: x)
 cv2.createTrackbar("White S1", "HSV Adjust", 0, 255, lambda x: x)
-cv2.createTrackbar("White S2", "HSV Adjust", 30, 255, lambda x: x)
-cv2.createTrackbar("White V1", "HSV Adjust", 220, 255, lambda x: x)
+cv2.createTrackbar("White S2", "HSV Adjust", 38, 255, lambda x: x)
+cv2.createTrackbar("White V1", "HSV Adjust", 107, 255, lambda x: x)
 cv2.createTrackbar("White V2", "HSV Adjust", 255, 255, lambda x: x)
 
 # 反光抑制参数
-cv2.createTrackbar("Glare Thresh", "HSV Adjust", 220, 255, lambda x: x)
+cv2.createTrackbar("Glare Thresh", "HSV Adjust", 234, 255, lambda x: x)
 
 # 形态学内核
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))

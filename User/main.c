@@ -41,6 +41,7 @@ int main(void)
   UART_Init();
   USART_Send('1');
   
+  
 	PS2_Init();							//初始化PS2手柄接口
 	PS2_SetInit();						//PS2手柄配置为模拟量模式
 	Car_Select_ADC_Init();				//车型选择ADC初始化
@@ -58,8 +59,17 @@ int main(void)
     
 	Car_Perimeter_Init();										//初始化轮子周长和轮距
 	TIMING_TIM_Init(7199,49);									//5ms中断控制，大部分控制逻辑在里面 ->监控按键，control 雷达-》总控制 其他是5ms更新一次数据
-	while(1)
+	
+   while (1) {
+      if (data_ready) {  // 如果数据已接收
+          data_ready = 0;  // 重置标志位
+          USART_SendString((const char*)rx_buf);  // 发送接收到的数据
+          USART_Send('\n');  // 添加换行符
+      }
+    }
+   while(1)
 	{
+    
 		Robot_Select();
 		if(Flag_Show)											//正常显示，非上位机模式
 		{
@@ -69,6 +79,7 @@ int main(void)
            APP_Show();											//手机蓝牙显示
 			
 			Voltage_Sum += Get_Voltage();						//电压测量，每50次取一次平均
+      
 			if((++Voltage_Count) == 5)
 				Voltage = Voltage_Sum/5,Voltage_Count = 0,Voltage_Sum = 0;
 		}
