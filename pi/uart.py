@@ -11,8 +11,12 @@ ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
 # 初始化检测器（关闭显示提升性能）
 detector = BallDetector(show_display=False)
 
+# uart.py（树莓派端）
 def send_data(ball_type, x, y):
-    data = f"{ball_type},{x},{y}\n"
+    # 计算校验和（异或校验）
+    checksum = ball_type ^ (x & 0xFF) ^ (x >> 8) ^ (y & 0xFF) ^ (y >> 8)
+    # 格式化数据包
+    data = f"${ball_type},{x},{y},{checksum}\n"
     ser.write(data.encode())
 
 def receive_response():
