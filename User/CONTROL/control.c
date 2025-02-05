@@ -22,6 +22,7 @@ int16_t ball_x = 0, ball_y = 0;
 uint8_t ball_detected = 0;
 uint32_t ball_last_tick=0;
 uint32_t sys_tick = 0;
+uint8_t checksum = 0;
 
 int16_t ball_angle = 0;
 int16_t ball_distance = 0;

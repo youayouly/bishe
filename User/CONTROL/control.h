@@ -26,6 +26,8 @@ extern int16_t ball_x , ball_y ;
 extern uint8_t ball_detected ;
 extern int16_t ball_angle;      // Ω«∂»
 extern int16_t ball_distance;   // æ‡¿Î
+extern uint8_t checksum;
+
 
 extern uint32_t ball_last_tick;
 #define BALL_TIMEOUT 200 // 200*5ms=1√Î≥¨ ±

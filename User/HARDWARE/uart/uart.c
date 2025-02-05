@@ -71,39 +71,53 @@ void USART_SendString(const char* str)
 }
 
 void parse_received_data(uint8_t* data) {
-    uint8_t ball_type;
-    int16_t x, y, distance, angle;
-    uint8_t received_checksum, calculated_checksum = 0;
-    
-    // 增加错误检测
-    if (sscanf((char*)data, "$%hhu,%hd,%hd,%hd,%hd,%hhx", 
-              &ball_type, &x, &y, &distance, &angle, &received_checksum) != 6) {
-        printf("格式错误: %s\n", data);
-        USART_SendString("ERR\n");
+    // 增加长度校验
+    if(strlen((char*)data) < 20) {
+        USART_SendString("ERR:SHORT\n");
         return;
     }
-
-    // 按字节顺序计算校验和
-    uint8_t bytes[] = {
-        (uint8_t)ball_type,
-        (uint8_t)(x >> 8), (uint8_t)x,
-        (uint8_t)(y >> 8), (uint8_t)y,
-        (uint8_t)(distance >> 8), (uint8_t)distance,
-        (uint8_t)(angle >> 8), (uint8_t)angle
-    };
     
-    for(int i = 0; i < sizeof(bytes); i++) {
-        calculated_checksum ^= bytes[i];
+    // 使用安全解析方式
+    int parsed = sscanf((char*)data, "$%hu,%hd,%hd,%hd,%hd,%hhx", 
+                       &ball_detected, &ball_x, &ball_y, &ball_distance, &ball_angle, &checksum);
+                       
+    if(parsed != 6) {
+        USART_SendString("ERR:FMT\n");
+        return;
     }
-
-    // 调试输出
-    printf("计算校验和: 0x%02X, 接收校验和: 0x%02X\n", calculated_checksum, received_checksum);
     
-    if (received_checksum == calculated_checksum) {
-        USART_SendString("ACK\n");
-    } else {
+    // 校验和验证（优化计算顺序）
+    uint8_t calc_checksum = 0;
+    uint8_t* ptr = (uint8_t*)&ball_detected;
+    for(int i=0; i<2; i++) calc_checksum ^= ptr[i]; // ball_type是uint8_t
+    
+    ptr = (uint8_t*)&ball_x;
+    for(int i=0; i<2; i++) calc_checksum ^= ptr[i];
+    
+    ptr = (uint8_t*)&ball_y;
+    for(int i=0; i<2; i++) calc_checksum ^= ptr[i];
+    
+    ptr = (uint8_t*)&ball_distance;
+    for(int i=0; i<2; i++) calc_checksum ^= ptr[i];
+    
+    ptr = (uint8_t*)&ball_angle;
+    for(int i=0; i<2; i++) calc_checksum ^= ptr[i];
+    
+    if(calc_checksum != checksum) {
         USART_SendString("NAK\n");
+        return;
     }
+    
+    // 数据有效性检查
+    if(abs(ball_x) > 640 || abs(ball_y) > 480 || ball_distance < 0) {
+        USART_SendString("ERR:INVALID\n");
+        return;
+    }
+    
+    // 更新球数据
+    ball_last_tick = GET_TICK();
+    ball_detected = 1;
+    USART_SendString("ACK\n");
 }
 
 
