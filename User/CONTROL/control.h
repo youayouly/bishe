@@ -1,28 +1,35 @@
-/***********************************************
-公司：轮趣科技（东莞）有限公司
-品牌：WHEELTEC
-官网：wheeltec.net
-淘宝店铺：shop114407458.taobao.com 
-速卖通: https://minibalance.aliexpress.com/store/4455017
-版本：V1.0
-修改时间：2023-03-02
-
-Brand: WHEELTEC
-Website: wheeltec.net
-Taobao shop: shop114407458.taobao.com 
-Aliexpress: https://minibalance.aliexpress.com/store/4455017
-Version: V1.0
-Update：2023-03-02
-
-All rights reserved
-***********************************************/
-
-
 #ifndef __CONTROL_H
 #define __CONTROL_H
 
 #include "Lidar.h"
 #include "Header.h"
+
+//捡球
+// 在定时器中断中维护时间戳（假设5ms触发一次）
+extern uint32_t sys_tick;
+#define BALL_TIMEOUT 200  // 200*5ms=1秒无数据认为目标丢失
+
+// 获取当前时间（单位：ms）
+#define GET_TICK() (sys_tick * 5)
+
+// 正常避障和追踪小球，在头文件定义状态和全局变量  状态机定义
+typedef enum {
+    LIDAR_AVOID,
+    BALL_TRACKING
+} OperationMode;
+
+
+extern OperationMode current_mode2;
+
+// 球数据相关变量
+extern int16_t ball_x , ball_y ;
+extern uint8_t ball_detected ;
+extern int16_t ball_angle;      // 角度
+extern int16_t ball_distance;   // 距离
+
+extern uint32_t ball_last_tick;
+#define BALL_TIMEOUT 200 // 200*5ms=1秒超时
+
 
 //PWM限制最大最小值
 #define PWM_MAX  6900
@@ -93,8 +100,9 @@ All rights reserved
 #define Angle_To_Rad						57.295779513f	//角度制转弧度制，除以这个参数
 #define Frequency							200.0f			//每5ms读取一次编码器的值
 #define SERVO_INIT 							1500  			//舵机零点PWM值
-#define SERVO3_INIT 							550  			
+#define SERVO3_INIT 							1900		
 //舵机零点PWM值 500 -  550 0 600 1丝丝 825能过乒乓球，850要倒转  1100是顶
+//1500刚好擦边 没进入 1800是垂直  1900碰到雷达柱子 25
 
 #define Encoder_resolution_Photoelectric	500.0f			//光电编码器500线
 #define Encoder_resolution_Hall 			13.0f			//霍尔编码器13线
@@ -144,8 +152,8 @@ extern float CCD_Move_X,ELE_Move_X;
 extern Encoder OriginalEncoder;
 
 
-void Bluetooth_Control(void);
-void PS2_Control(void);
+//void Bluetooth_Control(void);
+//void PS2_Control(void);
 void Get_Target_Encoder(float Vx,float Vz);
 void Get_Motor_PWM(void);
 void Get_Velocity_From_Encoder(void);
@@ -166,5 +174,7 @@ void Lidar_along_wall(void);
 void Get_Angle(u8 way);
 
 
+
+void Track_Ball(void);//追球
 
 #endif

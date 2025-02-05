@@ -28,18 +28,18 @@ int main(void)
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);//中断优先级分组
 	LED_GPIO_Config();					//LED初始化，PC2和PC3
 	Key_GPIO_Config();					//按键初始化，PA0和PC13  按键来使用雷达
-//	BEEP_GPIO_Config();					//蜂鸣器初始化，PA15
+	BEEP_GPIO_Config();					//蜂鸣器初始化，PA15
 	OLED_Init();						//OLED初始化
 	Encoder_Init();						//编码器初始化，TIM4和TIM8 
 	Motor_Init(7199,0);					//电机PWM初始化，TIM3
 	DEBUG_USART_Init();					//调试串口设置，串口1，波特率115200
 	BLUETOOTH_USART_Init();				//蓝牙串口设置，串口3，波特率9600
-//	LIDAR_USART_Init();					//雷达串口设置，串口5，波特率115200
+	LIDAR_USART_Init();					//雷达串口设置，串口5，波特率115200
   
   
   //串口2
   UART_Init();
-  USART_Send('1');
+//  USART_Send('1');
   
   
 	PS2_Init();							//初始化PS2手柄接口
@@ -60,16 +60,23 @@ int main(void)
 	Car_Perimeter_Init();										//初始化轮子周长和轮距
 	TIMING_TIM_Init(7199,49);									//5ms中断控制，大部分控制逻辑在里面 ->监控按键，control 雷达-》总控制 其他是5ms更新一次数据
 	
-   while (1) {
-      if (data_ready) {  // 如果数据已接收
+//   while (1) {
+//      if (data_ready) {  // 如果数据已接收
+//          data_ready = 0;  // 重置标志位
+//          USART_SendString((const char*)rx_buf);  // 发送接收到的数据
+//          USART_Send('\n');  // 添加换行符
+//      }
+//    }
+   while(1)
+	{
+    
+    if (data_ready) {  // 如果数据已接收
           data_ready = 0;  // 重置标志位
           USART_SendString((const char*)rx_buf);  // 发送接收到的数据
           USART_Send('\n');  // 添加换行符
       }
-    }
-   while(1)
-	{
     
+      
 		Robot_Select();
 		if(Flag_Show)											//正常显示，非上位机模式
 		{

@@ -1,48 +1,64 @@
-# uart.py
 import serial
 import time
-from detect import BallDetector  # 导入重构后的检测类
+from detect import BallDetector
 
-# 树莓派串口设备（根据实际修改）
+# 串口配置（根据实际修改）
 # ser = serial.Serial('COM13', 115200, timeout=1)
 ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
 
+# 初始化检测器（带相机参数）
+detector = BallDetector(
+    show_display=False,
+    focal_length=650,    # 需要根据实际相机校准
+    real_diameter=0.067  # 球的真实直径（单位：米）
+)
 
-# 初始化检测器（关闭显示提升性能）
-detector = BallDetector(show_display=False)
-
-# uart.py（树莓派端）
-def send_data(ball_type, x, y):
-    # 计算校验和（异或校验）
-    checksum = ball_type ^ (x & 0xFF) ^ (x >> 8) ^ (y & 0xFF) ^ (y >> 8)
-    # 格式化数据包
-    data = f"${ball_type},{x},{y},{checksum}\n"
+def send_data(ball_type, x, y, distance, angle):
+    # 确保使用16位有符号整数
+    payload = [
+        int(ball_type),
+        int(x) & 0xFFFF,
+        int(y) & 0xFFFF,
+        int(distance * 1000) & 0xFFFF,
+        int(angle * 100) & 0xFFFF
+    ]
+    
+    # 逐字节异或校验
+    checksum = 0
+    for value in payload:
+        checksum ^= (value >> 8) & 0xFF  # 先处理高字节
+        checksum ^= value & 0xFF        # 再处理低字节
+    
+    data = f"${payload[0]},{payload[1]},{payload[2]},{payload[3]},{payload[4]},{checksum}\n"
     ser.write(data.encode())
 
 def receive_response():
+    """接收并处理响应"""
     response = ser.readline().decode().strip()
     if response:
-        print("Received:", response)
+        print(f"[UART响应] {response}")
 
 def main():
     try:
         while True:
             ret, frame = detector.cap.read()
             if not ret:
-                print("摄像头读取失败")
+                print("[错误] 摄像头读取失败")
                 break
             
-            # 检测球数据
-            ball_type, x, y = detector.detect_balls(frame)
+            # 检测球体数据
+            ball_type, x, y, distance, angle, _ = detector.detect_balls(frame)
+            # 用下划线忽略最后一个返回值
             
-            if ball_type > 0:  # 检测到球时发送
-                send_data(ball_type, x, y)
+            if ball_type > 0:
+                print(f"检测到球: 类型={ball_type}, X={x}, Y={y}, 距离={distance:.2f}m, 角度={angle:.2f}°")
+                send_data(ball_type, x, y, distance, angle)
                 receive_response()
             
-            time.sleep(0.1)  # 控制发送频率
+            time.sleep(0.05)  # 约20Hz发送频率
             
     except KeyboardInterrupt:
-        print("程序终止")
+        print("\n程序终止")
     finally:
         detector.release()
         ser.close()

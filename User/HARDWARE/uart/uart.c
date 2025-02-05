@@ -4,6 +4,8 @@ uint8_t rx_buf[RX_BUF_SIZE];  // 定义接收缓冲区
 uint8_t rx_index = 0;  // 初始化缓冲区索引
 uint8_t data_ready = 0;  // 初始化数据准备标志
 
+
+
 void UART_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStructure;
@@ -68,45 +70,61 @@ void USART_SendString(const char* str)
     }
 }
 
-void parse_received_data(uint8_t* data)
-{
-    uint8_t ball_type = 0;
-    int x = 0, y = 0;
+void parse_received_data(uint8_t* data) {
+    uint8_t ball_type;
+    int16_t x, y, distance, angle;
+    uint8_t received_checksum, calculated_checksum = 0;
+    
+    // 增加错误检测
+    if (sscanf((char*)data, "$%hhu,%hd,%hd,%hd,%hd,%hhx", 
+              &ball_type, &x, &y, &distance, &angle, &received_checksum) != 6) {
+        printf("格式错误: %s\n", data);
+        USART_SendString("ERR\n");
+        return;
+    }
 
-    // 假设数据格式是 ball_type,x,y
-    if (sscanf((char*)data, "%hhu,%d,%d", &ball_type, &x, &y) == 3) {
-        // 打印接收到的球的类型和坐标
-        printf("Received ball: type=%d, x=%d, y=%d\n", ball_type, x, y);
+    // 按字节顺序计算校验和
+    uint8_t bytes[] = {
+        (uint8_t)ball_type,
+        (uint8_t)(x >> 8), (uint8_t)x,
+        (uint8_t)(y >> 8), (uint8_t)y,
+        (uint8_t)(distance >> 8), (uint8_t)distance,
+        (uint8_t)(angle >> 8), (uint8_t)angle
+    };
+    
+    for(int i = 0; i < sizeof(bytes); i++) {
+        calculated_checksum ^= bytes[i];
+    }
 
-        // 根据 ball_type, x, y 执行后续操作
-        // 例如控制机械臂或其他硬件
-
-        // 发送确认信息回树莓派
-        char response[50];
-        snprintf(response, sizeof(response), "Received: ball_type=%d, x=%d, y=%d\n", ball_type, x, y);
-        USART_SendString(response);  // 将处理结果发送回树莓派
+    // 调试输出
+    printf("计算校验和: 0x%02X, 接收校验和: 0x%02X\n", calculated_checksum, received_checksum);
+    
+    if (received_checksum == calculated_checksum) {
+        USART_SendString("ACK\n");
+    } else {
+        USART_SendString("NAK\n");
     }
 }
 
-// 串口中断服务函数
-void OPENMV_USART_IRQHandler(void) 
-{
+
+void OPENMV_USART_IRQHandler(void) {
     if (USART_GetITStatus(OPENMV_USARTx, USART_IT_RXNE) != RESET) {
         uint8_t ch = USART_ReceiveData(OPENMV_USARTx);
 
-        // 检测帧结束符
-        if (ch == '\n') {
-            rx_buf[rx_index] = '\0';  // 字符串终止符
-            data_ready = 1;
+        if (ch == '$') {  // 检测到起始符
             rx_index = 0;
-        } else {
-            // 缓存未满时存储数据
-            if (rx_index < RX_BUF_SIZE - 1) {
-                rx_buf[rx_index++] = ch;
+            rx_buf[rx_index++] = ch;
+        } else if (rx_index > 0 && rx_index < RX_BUF_SIZE - 1) {
+            rx_buf[rx_index++] = ch;
+            if (ch == '\n') {  // 检测到结束符
+                rx_buf[rx_index] = '\0';
+                data_ready = 1;
+                parse_received_data(rx_buf);
+                rx_index = 0;
             }
+        } else {
+            rx_index = 0;  // 非法数据重置
         }
-
-        // 处理完数据后清除中断标志
         USART_ClearITPendingBit(OPENMV_USARTx, USART_IT_RXNE);
     }
 }

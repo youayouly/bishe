@@ -17,6 +17,7 @@ void OPENMV_USART_IRQHandler(void) ;
 // 定义接收缓冲区大小
 #define RX_BUF_SIZE 64
 
+
 // 外部声明全局变量
 extern uint8_t rx_buf[RX_BUF_SIZE];  // 接收缓冲区
 extern uint8_t rx_index;  // 缓存索引

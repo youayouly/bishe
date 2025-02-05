@@ -96,7 +96,7 @@ void CCD_Init(void);
 void Dly_us(void);
 void RD_TSL(void);
 void  Find_CCD_Median(void);
-void CCD_Mode(void);
+//void CCD_Mode(void);
 
 
 

@@ -254,33 +254,33 @@ Output  : none
 入口参数: 无
 返回  值：无
 **************************************************************************/	 	
-void ELE_Mode(void)
-{
-	int Sum = 0;
-	Sensor_Left = Get_Adc(ELE_ADC_L_CHANNEL);
-	Sensor_Middle = Get_Adc(ELE_ADC_M_CHANNEL);
-	Sensor_Right = Get_Adc(ELE_ADC_R_CHANNEL);
-	Sum = Sensor_Left*1+Sensor_Middle*100+Sensor_Right*199;			
-	Sensor = Sum/(Sensor_Left+Sensor_Middle+Sensor_Right);
-	if(Detect_Barrier() == No_Barrier)		//检测到无障碍物
-	{
-		Move_X = ELE_Move_X;				//巡线的时候速度,默认是0.25m
-		if(Car_Num == Diff_Car|| Car_Num == Akm_Car)
-			Move_Z = ELE_PID(Sensor,92);		//目标值92
-		else
-			Move_Z = ELE_PID(Sensor,100);		//目标值100
-		Buzzer_Alarm(0);
-    }											
-	else									//有障碍物
-	{
-		if(!Flag_Stop)
-			Buzzer_Alarm(100);				//当电机使能的时候，有障碍物则蜂鸣器报警
-		else 
-			Buzzer_Alarm(0);
-		Move_X = 0;
-		Move_Z = 0;
-	}
-}
+//void ELE_Mode(void)
+//{
+//	int Sum = 0;
+//	Sensor_Left = Get_Adc(ELE_ADC_L_CHANNEL);
+//	Sensor_Middle = Get_Adc(ELE_ADC_M_CHANNEL);
+//	Sensor_Right = Get_Adc(ELE_ADC_R_CHANNEL);
+//	Sum = Sensor_Left*1+Sensor_Middle*100+Sensor_Right*199;			
+//	Sensor = Sum/(Sensor_Left+Sensor_Middle+Sensor_Right);
+//	if(Detect_Barrier() == No_Barrier)		//检测到无障碍物
+//	{
+//		Move_X = ELE_Move_X;				//巡线的时候速度,默认是0.25m
+//		if(Car_Num == Diff_Car|| Car_Num == Akm_Car)
+//			Move_Z = ELE_PID(Sensor,92);		//目标值92
+//		else
+//			Move_Z = ELE_PID(Sensor,100);		//目标值100
+//		Buzzer_Alarm(0);
+//    }											
+//	else									//有障碍物
+//	{
+//		if(!Flag_Stop)
+//			Buzzer_Alarm(100);				//当电机使能的时候，有障碍物则蜂鸣器报警
+//		else 
+//			Buzzer_Alarm(0);
+//		Move_X = 0;
+//		Move_Z = 0;
+//	}
+//}
 
 /**************************************************************************
 Function: Detect_Barrier
@@ -438,14 +438,14 @@ Output  : none
 入口参数: 无
 返回  值：无
 **************************************************************************/	 	
-void CCD_Mode(void)
-{
-	RD_TSL();			//读取CCD模块数据
-	Find_CCD_Median();	//找中值
-	
-	Move_X = CCD_Move_X;			//CCD巡线速度，默认0.3m
-	Move_Z = CCD_PID(CCD_Median,64);//PID调节，目标值64
-	
-}
+//void CCD_Mode(void)
+//{
+//	RD_TSL();			//读取CCD模块数据
+//	Find_CCD_Median();	//找中值
+//	
+//	Move_X = CCD_Move_X;			//CCD巡线速度，默认0.3m
+//	Move_Z = CCD_PID(CCD_Median,64);//PID调节，目标值64
+//	
+//}
 
 

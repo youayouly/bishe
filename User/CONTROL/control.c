@@ -15,6 +15,37 @@ float ELE_Move_X = 0.3;						//电磁巡线速度
 u8 Ros_count=0;
 Encoder OriginalEncoder; //Encoder raw data //编码器原始数据   
 short Accel_Y,Accel_Z,Accel_X,Accel_Angle_x,Accel_Angle_y,Gyro_X,Gyro_Z,Gyro_Y;
+
+
+
+int16_t ball_x = 0, ball_y = 0;
+uint8_t ball_detected = 0;
+uint32_t ball_last_tick=0;
+uint32_t sys_tick = 0;
+
+int16_t ball_angle = 0;
+int16_t ball_distance = 0;
+
+
+//停止函数
+void Stop_Motor_With_Kinematics(void) {
+    // 调用运动学逆解函数，速度和角度均为0
+    Get_Target_Encoder(0.0f, 0.0f); // Vx=0, Vz=0
+  
+  
+    Move_X = 0;
+    Move_Z = 0;
+    MotorA.Target_Encoder = 0;
+    MotorB.Target_Encoder = 0;
+    // 直接设置PWM为0
+    Set_Pwm(0, 0);
+    // 调试输出
+}
+
+// 定义全局变量（实际内存分配）
+OperationMode current_mode2 = LIDAR_AVOID; // 初始化为避障模式
+
+
 /**************************************************************************
 Function: Control Function
 Input   : none
@@ -25,10 +56,15 @@ Output  : none
 **************************************************************************/	 	
 int TIMING_TIM_IRQHandler(void)
 {
+  
+  
 	static u8 Count_CCD = 0;								//调节CCD控制频率
-	if(TIM_GetITStatus( TIMING_TIM, TIM_IT_Update) != RESET ) 
+	if(TIM_GetITStatus( TIMING_TIM, TIM_IT_Update) != RESET ) //不等于1 ==0
 	{			
 		TIM_ClearITPendingBit(TIMING_TIM , TIM_IT_Update);
+    
+    sys_tick++; // 每5ms自增1
+        // ...原有逻辑...
     
 		Get_Velocity_From_Encoder();								//读取左右编码器的值且转换成速度
         Get_KeyVal();		 		
@@ -46,33 +82,75 @@ int TIMING_TIM_IRQHandler(void)
 //		      USART1_SEND();                //给ros端发送数据 50ms一次
 		 	  Ros_count=0;
 		    }				
-			if(APP_ON_Flag == RC_ON)								//开启蓝牙控制时，需上拉轮盘直到显示屏出现 bluetooth 字样
-				Bluetooth_Control();								
-			else if(PS2_ON_Flag == RC_ON)							//开启手柄控制时，需先按start按键，然后上拉左摇杆直到出现 PS2 字样
-				PS2_Control();	
+//			if(APP_ON_Flag == RC_ON)								//开启蓝牙控制时，需上拉轮盘直到显示屏出现 bluetooth 字样
+//				Bluetooth_Control();								
+//			else if(PS2_ON_Flag == RC_ON)							//开启手柄控制时，需先按start按键，然后上拉左摇杆直到出现 PS2 字样
+//				PS2_Control();	
 		}
-		else if(Mode == Lidar_Avoid_Mode)							//雷达巡航避障模式
-			Lidar_Avoid();
+		  else if(Mode == Lidar_Avoid_Mode)  //雷达巡航模式
+        {
+             // 检查球数据超时
+//            if(ball_detected && (GET_TICK() - ball_last_tick > BALL_TIMEOUT)) {
+//                ball_detected = 0;
+//                current_mode2 = LIDAR_AVOID;
+//                Stop_Motor_With_Kinematics();
+//            }
+
+//            switch(current_mode2) {
+//                case LIDAR_AVOID:
+            
+                  // 修改后的控制逻辑
+            if(Mode == Lidar_Avoid_Mode) {
+                if(ball_detected) {
+                    // 进入球追踪模式后禁用避障
+                    current_mode2 = BALL_TRACKING;
+                    Stop_Motor_With_Kinematics();
+                    Get_Target_Encoder(0, 0);
+                } else {
+                    if(current_mode2 != BALL_TRACKING) { // 防止模式回跳
+                        Lidar_Avoid();
+                        Get_Target_Encoder(Move_X, Move_Z);
+                    }
+                }
+            }
+//                    break;
+
+//                case BALL_TRACKING:
+//                    Track_Ball(); // 球追踪控制
+//                    
+//                    // 检查是否到达中心区域
+//                    if(abs(ball_x - 320) < 20 && abs(ball_y - 240) < 20) {
+//                        current_mode2 = LIDAR_AVOID;
+//                        ball_detected = 0;
+//                        Stop_Motor_With_Kinematics();
+//                    }
+////                    break;
+//            }
+        }
+    
 		else if(Mode == Lidar_Follow_Mode)							//雷达跟随模式
 			Lidar_Follow();
 		else if(Mode == Lidar_Along_Mode)							//雷达走直线模式
-			Lidar_along_wall();
-		else if(Mode == ELE_Line_Patrol_Mode)						//电磁巡线模式
-			ELE_Mode();
-		else														//CCD模式
-		{
-			if(++Count_CCD == 4)									//调节控制频率，4*5 = 20ms控制一次
-			{
-				Count_CCD = 0;
-				CCD_Mode();											
-			}
-			else if(Count_CCD>4)
-				Count_CCD = 0;
-		}			
+			Lidar_along_wall(); //结合pid
+    
+    
+    
+//		else if(Mode == ELE_Line_Patrol_Mode)						//电磁巡线模式
+//			ELE_Mode();
+//		else														//CCD模式
+//		{
+//			if(++Count_CCD == 4)									//调节控制频率，4*5 = 20ms控制一次
+//			{
+//				Count_CCD = 0;
+//				CCD_Mode();											
+//			}
+//			else if(Count_CCD>4)
+//				Count_CCD = 0;
+//		}			
 		
 //		else 
 //			Ultrasonic_Follow();									//超声波跟随
-		Get_Target_Encoder(Move_X,Move_Z);							//运动学逆解解，转换成编码器的目标速度
+//		Get_Target_Encoder(Move_X,Move_Z);							//运动学逆解解，转换成编码器的目标速度
     
     //中间如果出现了问题
 		if(Turn_Off()==Normal)										//检查电机是否关闭，电压是否不足
@@ -88,6 +166,33 @@ int TIMING_TIM_IRQHandler(void)
 	return 0;
 }
 
+
+// 球追踪控制函数
+void Track_Ball(void) {
+    // 计算与画面中心的偏差
+    int dx = ball_x - 320; // 水平偏差
+    int dy = 240 - ball_y; // 垂直偏差（Y轴反向）
+
+    // 运动学参数
+    float Vx = 0.0f; // 前进速度（m/s）
+    float Vz = 0.0f; // 转向角速度（rad/s）
+
+    // 水平偏差控制转向
+    if(abs(dx) > 30) { 
+        Vz = dx * 0.005f; // 比例系数调整转向灵敏度
+        Vz = target_limit_float(Vz, -0.5f, 0.5f); // 限制最大转向角
+    }
+
+    // 垂直偏差控制前进速度
+    if(dy > 50) { // 球在远处
+        Vx = 0.3f; // 0.3 m/s前进
+    } else if(dy > 20) {
+        Vx = 0.1f; // 慢速接近
+    }
+
+    // 应用运动学逆解
+    Get_Target_Encoder(Vx, Vz);
+}
 /**************************************************************************
 Function: Bluetooth_Control
 Input   : none
@@ -96,27 +201,27 @@ Output  : none
 入口参数: 无 
 返回  值：无
 **************************************************************************/	 	
-void Bluetooth_Control(void)
-{
-	if(Flag_Direction==0) Move_X=0,Move_Z=0;  			 						//停止
-	else if(Flag_Direction==1) Move_X=RC_Velocity,Move_Z=0;  					//前进
-	else if(Flag_Direction==2) Move_X=RC_Velocity,Move_Z=Pi/2;  	//右前
-	else if(Flag_Direction==3) Move_X=0,Move_Z=Pi/2;   				//向右
-	else if(Flag_Direction==4) Move_X=-RC_Velocity,Move_Z=Pi/2; 	//右后
-	else if(Flag_Direction==5) Move_X=-RC_Velocity,Move_Z=0;    				//后退
-	else if(Flag_Direction==6) Move_X=-RC_Velocity,Move_Z=-Pi/2; 	//左后
-	else if(Flag_Direction==7) Move_X=0,Move_Z=-Pi/2;      		 	//向左
-	else if(Flag_Direction==8) Move_X=RC_Velocity,Move_Z=-Pi/2;  	//左前
-	else Move_X=0,Move_Z=0; 
-	
-	if(Car_Num==Akm_Car)
-	{
-		//Ackermann structure car is converted to the front wheel steering Angle system target value, and kinematics analysis is pearformed
-		//阿克曼结构小车转换为前轮转向角度
-		Move_Z=Move_Z*2/10; 
-	}
-	Move_X=Move_X/1000;     Move_Z=-Move_Z;
-}
+//void Bluetooth_Control(void)
+//{
+//	if(Flag_Direction==0) Move_X=0,Move_Z=0;  			 						//停止
+//	else if(Flag_Direction==1) Move_X=RC_Velocity,Move_Z=0;  					//前进
+//	else if(Flag_Direction==2) Move_X=RC_Velocity,Move_Z=Pi/2;  	//右前
+//	else if(Flag_Direction==3) Move_X=0,Move_Z=Pi/2;   				//向右
+//	else if(Flag_Direction==4) Move_X=-RC_Velocity,Move_Z=Pi/2; 	//右后
+//	else if(Flag_Direction==5) Move_X=-RC_Velocity,Move_Z=0;    				//后退
+//	else if(Flag_Direction==6) Move_X=-RC_Velocity,Move_Z=-Pi/2; 	//左后
+//	else if(Flag_Direction==7) Move_X=0,Move_Z=-Pi/2;      		 	//向左
+//	else if(Flag_Direction==8) Move_X=RC_Velocity,Move_Z=-Pi/2;  	//左前
+//	else Move_X=0,Move_Z=0; 
+//	
+//	if(Car_Num==Akm_Car)
+//	{
+//		//Ackermann structure car is converted to the front wheel steering Angle system target value, and kinematics analysis is pearformed
+//		//阿克曼结构小车转换为前轮转向角度
+//		Move_Z=Move_Z*2/10; 
+//	}
+//	Move_X=Move_X/1000;     Move_Z=-Move_Z;
+//}
 
 /**************************************************************************
 Function: PS2_Control
@@ -126,63 +231,63 @@ Output  : none
 入口参数: 无 
 返回  值：无
 **************************************************************************/	 	
-void PS2_Control(void)
-{
-	int LY,RX;									//手柄ADC的值
-	int Threshold=20; 							//阈值，忽略摇杆小幅度动作
-	static u8 Key1_Count = 0,Key2_Count = 0;	//用于控制读取摇杆的速度
-	//转化为128到-128的数值
-	LY=-(PS2_LY-128);//左边Y轴控制前进后退
-	RX=-(PS2_RX-128);//右边X轴控制转向
+//void PS2_Control(void)
+//{
+//	int LY,RX;									//手柄ADC的值
+//	int Threshold=20; 							//阈值，忽略摇杆小幅度动作
+//	static u8 Key1_Count = 0,Key2_Count = 0;	//用于控制读取摇杆的速度
+//	//转化为128到-128的数值
+//	LY=-(PS2_LY-128);//左边Y轴控制前进后退
+//	RX=-(PS2_RX-128);//右边X轴控制转向
 
-	if(LY>-Threshold&&LY<Threshold)	LY=0;
-	if(RX>-Threshold&&RX<Threshold)	RX=0;		//忽略摇杆小幅度动作
-	
-	Move_X = (RC_Velocity/128)*LY;				//速度控制，力度表示速度大小
-	if(Car_Num == Akm_Car)						//阿克曼车转向控制，力度表示转向角度
-		Move_Z = -(RC_Turn_Velocity/128)*RX;	
-	else										//其他车型转向控制
-	{
-		if(Move_X>=0)
-			Move_Z = -(RC_Turn_Velocity/128)*RX;	//转向控制，力度表示转向速度
-		else
-			Move_Z = (RC_Turn_Velocity/128)*RX;
-	}
-	if (PS2_KEY == PSB_L1) 					 	//按下左1键加速（按键在顶上）
-	{	
-		if((++Key1_Count) == 20)				//调节按键反应速度
-		{
-			PS2_KEY = 0;
-			Key1_Count = 0;
-			if((RC_Velocity += X_Step)>MAX_RC_Velocity)				//前进最大速度1230
-				RC_Velocity = MAX_RC_Velocity;
-			if(Car_Num != Akm_Car)								//非阿克曼车可调节转向速度
-			{
-				if((RC_Turn_Velocity += Z_Step)>MAX_RC_Turn_Bias)	//转向最大速度325
-					RC_Turn_Velocity = MAX_RC_Turn_Bias;
-			}
-		}
-	}
-	else if(PS2_KEY == PSB_R1) 					//按下右1键减速
-	{
-		if((++Key2_Count) == 20)
-		{
-			PS2_KEY = 0;
-			Key2_Count = 0;
-			if((RC_Velocity -= X_Step)<MINI_RC_Velocity)			//前后最小速度210
-				RC_Velocity = MINI_RC_Velocity;
-			
-			if(Car_Num != Akm_Car)								//非阿克曼车可调节转向速度
-			{
-				if((RC_Turn_Velocity -= Z_Step)<MINI_RC_Turn_Velocity)//转向最小速度45
-				RC_Turn_Velocity = MINI_RC_Turn_Velocity;
-			}
-		}
-	}
-	else
-		Key2_Count = 0,Key2_Count = 0;			//读取到其他按键重新计数
-	Move_X=Move_X/1000;  Move_Z=-Move_Z;
-}
+//	if(LY>-Threshold&&LY<Threshold)	LY=0;
+//	if(RX>-Threshold&&RX<Threshold)	RX=0;		//忽略摇杆小幅度动作
+//	
+//	Move_X = (RC_Velocity/128)*LY;				//速度控制，力度表示速度大小
+//	if(Car_Num == Akm_Car)						//阿克曼车转向控制，力度表示转向角度
+//		Move_Z = -(RC_Turn_Velocity/128)*RX;	
+//	else										//其他车型转向控制
+//	{
+//		if(Move_X>=0)
+//			Move_Z = -(RC_Turn_Velocity/128)*RX;	//转向控制，力度表示转向速度
+//		else
+//			Move_Z = (RC_Turn_Velocity/128)*RX;
+//	}
+//	if (PS2_KEY == PSB_L1) 					 	//按下左1键加速（按键在顶上）
+//	{	
+//		if((++Key1_Count) == 20)				//调节按键反应速度
+//		{
+//			PS2_KEY = 0;
+//			Key1_Count = 0;
+//			if((RC_Velocity += X_Step)>MAX_RC_Velocity)				//前进最大速度1230
+//				RC_Velocity = MAX_RC_Velocity;
+//			if(Car_Num != Akm_Car)								//非阿克曼车可调节转向速度
+//			{
+//				if((RC_Turn_Velocity += Z_Step)>MAX_RC_Turn_Bias)	//转向最大速度325
+//					RC_Turn_Velocity = MAX_RC_Turn_Bias;
+//			}
+//		}
+//	}
+//	else if(PS2_KEY == PSB_R1) 					//按下右1键减速
+//	{
+//		if((++Key2_Count) == 20)
+//		{
+//			PS2_KEY = 0;
+//			Key2_Count = 0;
+//			if((RC_Velocity -= X_Step)<MINI_RC_Velocity)			//前后最小速度210
+//				RC_Velocity = MINI_RC_Velocity;
+//			
+//			if(Car_Num != Akm_Car)								//非阿克曼车可调节转向速度
+//			{
+//				if((RC_Turn_Velocity -= Z_Step)<MINI_RC_Turn_Velocity)//转向最小速度45
+//				RC_Turn_Velocity = MINI_RC_Turn_Velocity;
+//			}
+//		}
+//	}
+//	else
+//		Key2_Count = 0,Key2_Count = 0;			//读取到其他按键重新计数
+//	Move_X=Move_X/1000;  Move_Z=-Move_Z;
+//}
 /**************************************************************************
 Function: Get_Velocity_From_Encoder
 Input   : none
@@ -266,36 +371,36 @@ void Get_Target_Encoder(float Vx,float Vz)
 			Servo_PWM=target_limit_int(Servo_PWM,800,2200);	//Servo PWM value limit //舵机PWM值限幅
 
 	}
-	else if(Car_Num==Diff_Car)											//差速小车
-	{
-		  if(Vx<0) Vz=-Vz;
-	      else     Vz=Vz;
-			//Inverse kinematics //运动学逆解
-		   MotorA.Target_Encoder = Vx - Vz * Wheelspacing / 2.0f; //计算出左轮的目标速度
-		   MotorB.Target_Encoder = Vx + Vz * Wheelspacing / 2.0f; //计算出右轮的目标速度
-			//Wheel (motor) target speed limit //车轮(电机)目标速度限幅
-		   MotorA.Target_Encoder=target_limit_float( MotorA.Target_Encoder,-amplitude,amplitude); 
-	       MotorB.Target_Encoder=target_limit_float( MotorB.Target_Encoder,-amplitude,amplitude); 
-	}  
-	else if(Car_Num==Small_Tank_Car)
-	{
-		  if(Vx<0) Vz=-Vz;
-	      else     Vz=Vz;
-		  MotorA.Target_Encoder = Vx-Vz*Wheelspacing/2.0f;//计算出左轮的目标速度
-		  MotorB.Target_Encoder = Vx+Vz*Wheelspacing/2.0f;//计算出右轮的目标速度
-		//Wheel (motor) target speed limit //车轮(电机)目标速度限幅
-		  MotorA.Target_Encoder=target_limit_float( MotorA.Target_Encoder,-amplitude,amplitude); 
-	      MotorB.Target_Encoder=target_limit_float( MotorB.Target_Encoder,-amplitude,amplitude); 
-	}
-	else if(Car_Num==Big_Tank_Car)
-	{
-		  if(Vx<0) Vz=-Vz;
-	      else     Vz=Vz;
-		  MotorA.Target_Encoder = Vx-Vz*Wheelspacing/2.0f;//计算出左轮的目标速度
-		  MotorB.Target_Encoder = Vx+Vz*Wheelspacing/2.0f;//计算出右轮的目标速度
-		  MotorA.Target_Encoder=target_limit_float( MotorA.Target_Encoder,-amplitude,amplitude); 
-	      MotorB.Target_Encoder=target_limit_float( MotorB.Target_Encoder,-amplitude,amplitude); 
-	}
+//	else if(Car_Num==Diff_Car)											//差速小车
+//	{
+//		  if(Vx<0) Vz=-Vz;
+//	      else     Vz=Vz;
+//			//Inverse kinematics //运动学逆解
+//		   MotorA.Target_Encoder = Vx - Vz * Wheelspacing / 2.0f; //计算出左轮的目标速度
+//		   MotorB.Target_Encoder = Vx + Vz * Wheelspacing / 2.0f; //计算出右轮的目标速度
+//			//Wheel (motor) target speed limit //车轮(电机)目标速度限幅
+//		   MotorA.Target_Encoder=target_limit_float( MotorA.Target_Encoder,-amplitude,amplitude); 
+//	       MotorB.Target_Encoder=target_limit_float( MotorB.Target_Encoder,-amplitude,amplitude); 
+//	}  
+//	else if(Car_Num==Small_Tank_Car)
+//	{
+//		  if(Vx<0) Vz=-Vz;
+//	      else     Vz=Vz;
+//		  MotorA.Target_Encoder = Vx-Vz*Wheelspacing/2.0f;//计算出左轮的目标速度
+//		  MotorB.Target_Encoder = Vx+Vz*Wheelspacing/2.0f;//计算出右轮的目标速度
+//		//Wheel (motor) target speed limit //车轮(电机)目标速度限幅
+//		  MotorA.Target_Encoder=target_limit_float( MotorA.Target_Encoder,-amplitude,amplitude); 
+//	      MotorB.Target_Encoder=target_limit_float( MotorB.Target_Encoder,-amplitude,amplitude); 
+//	}
+//	else if(Car_Num==Big_Tank_Car)
+//	{
+//		  if(Vx<0) Vz=-Vz;
+//	      else     Vz=Vz;
+//		  MotorA.Target_Encoder = Vx-Vz*Wheelspacing/2.0f;//计算出左轮的目标速度
+//		  MotorB.Target_Encoder = Vx+Vz*Wheelspacing/2.0f;//计算出右轮的目标速度
+//		  MotorA.Target_Encoder=target_limit_float( MotorA.Target_Encoder,-amplitude,amplitude); 
+//	      MotorB.Target_Encoder=target_limit_float( MotorB.Target_Encoder,-amplitude,amplitude); 
+//	}
 }
 /**************************************************************************
 Function: Get_Motor_PWM

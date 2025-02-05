@@ -19,18 +19,18 @@ float Follow_KP_Diff = 0.01f,Follow_KD_Diff = 0.025f,Follow_KI_Diff = 0.0001f;
 float Distance_KP =0.001685,Distance_KD = 0.25557 ,Distance_KI = 0.00001;	//¾àÀëµ÷ÕûPID²ÎÊý
 
 
-//¸÷³µÐÍµç´ÅÑ²ÏßPID²ÎÊý,ÆäÖÐKÊÇ·Ç³£¹æPIDµÄÒ»Ïî²ÎÊý£¬µ÷½Ú·ÇÏßÐÔ±ä»¯
-float ELE_KP_Diff = 0.01642f,ELE_KD_Diff = 3.0f,ELE_KI_Diff = 0.00012f,ELE_K_Diff = 0.00018f;
-float ELE_KP_Akm = 0.001408f,ELE_KD_Akm = 0.03f,ELE_KI_Akm = 0.00012f,ELE_K_Akm = 0.00028f;
-float ELE_KP_STank = 0.04368,ELE_KD_STank = 3.41,ELE_KI_STank = 0.0002,ELE_K_STank = 0.0002;
-float ELE_KP_BTank = 0.01058,ELE_KD_BTank = 4.182,ELE_KI_BTank = 0.0005,ELE_K_BTank = 0.0004; 
+////¸÷³µÐÍµç´ÅÑ²ÏßPID²ÎÊý,ÆäÖÐKÊÇ·Ç³£¹æPIDµÄÒ»Ïî²ÎÊý£¬µ÷½Ú·ÇÏßÐÔ±ä»¯
+//float ELE_KP_Diff = 0.01642f,ELE_KD_Diff = 3.0f,ELE_KI_Diff = 0.00012f,ELE_K_Diff = 0.00018f;
+//float ELE_KP_Akm = 0.001408f,ELE_KD_Akm = 0.03f,ELE_KI_Akm = 0.00012f,ELE_K_Akm = 0.00028f;
+//float ELE_KP_STank = 0.04368,ELE_KD_STank = 3.41,ELE_KI_STank = 0.0002,ELE_K_STank = 0.0002;
+//float ELE_KP_BTank = 0.01058,ELE_KD_BTank = 4.182,ELE_KI_BTank = 0.0005,ELE_K_BTank = 0.0004; 
 
 
-//¸÷³µÐÍCCDÑ²ÏßPID²ÎÊý
-float CCD_KP_Akm = 0.0126,CCD_KD_Akm = 0.0262,CCD_KI_Akm = 0.0001;
-float CCD_KP_Diff = 0.02166,CCD_KD_Diff = 0.3100,CCD_KI_Diff = 0.0001;
-float CCD_KP_STank = 0.05772,CCD_KD_STank = 0.01186,CCD_KI_STank = 0.0001;
-float CCD_KP_BTank = 0.03345,CCD_KD_BTank = 0.01902,CCD_KI_BTank = 0.0001;
+////¸÷³µÐÍCCDÑ²ÏßPID²ÎÊý
+//float CCD_KP_Akm = 0.0126,CCD_KD_Akm = 0.0262,CCD_KI_Akm = 0.0001;
+//float CCD_KP_Diff = 0.02166,CCD_KD_Diff = 0.3100,CCD_KI_Diff = 0.0001;
+//float CCD_KP_STank = 0.05772,CCD_KD_STank = 0.01186,CCD_KI_STank = 0.0001;
+//float CCD_KP_BTank = 0.03345,CCD_KD_BTank = 0.01902,CCD_KI_BTank = 0.0001;
 
 
 /**************************************************************************
@@ -155,6 +155,21 @@ float Distance_Adjust_PID(float Current_Distance,float Target_Distance)//¾àÀëµ÷Õ
 	return OutPut;                                          	
 }
 
+
+
+// control.c
+void control_motor_steering(uint8_t type, int16_t x, int16_t y) {
+    // ÊµÏÖÔË¶¯¿ØÖÆÂß¼­£¨µ÷ÓÃGet_Target_EncoderµÈ£©
+}
+
+
+
+
+
+
+
+
+
 /**************************************************************************
 Function: ELE_PID
 Input   : Current_ELE_ADC;Target_ELE_ADC
@@ -163,26 +178,26 @@ Output  : OutPut
 Èë¿Ú²ÎÊý: µ±Ç°µç´ÅÑ²ÏßADCºÍÄ¿±êADC
 ·µ»Ø  Öµ£ºµç»úÄ¿±êËÙ¶È
 **************************************************************************/	 	
-float ELE_PID(int Current_ELE_ADC,int Target_ELE_ADC )
-{
-	static float Bias,OutPut,Integral_bias,Last_Bias;
-	Bias=Target_ELE_ADC-Current_ELE_ADC;                        //¼ÆËãÆ«²î
-	Integral_bias+=Bias;	                                 	//Çó³öÆ«²îµÄ»ý·Ö
-	if(Integral_bias>5000) Integral_bias=5000;
-	else if(Integral_bias<-5000) Integral_bias=-5000;
-	if(Car_Num == Diff_Car)										//³µÐÍ²»Í¬£¬²ÎÊý²»Í¬
-		OutPut=-ELE_KP_Diff*Bias-ELE_KI_Diff*Integral_bias-ELE_KD_Diff*(Bias-Last_Bias)-ELE_K_Diff*myabs(Bias)*Bias;//Î»ÖÃÊ½PID¿ØÖÆÆ÷
-	else if(Car_Num == Akm_Car)
-		OutPut=-ELE_KP_Akm*Bias-ELE_KI_Akm*Integral_bias-ELE_KD_Akm*(Bias-Last_Bias)-ELE_K_Akm*myabs(Bias)*Bias;
-	else if(Car_Num == Small_Tank_Car)
-		OutPut=-ELE_KP_STank*Bias-ELE_KI_STank*Integral_bias-ELE_KD_STank*(Bias-Last_Bias)-ELE_K_STank*myabs(Bias)*Bias;
-	else																					
-		OutPut=-ELE_KP_BTank*Bias-ELE_KI_BTank*Integral_bias-ELE_KD_BTank*(Bias-Last_Bias)-ELE_K_BTank*myabs(Bias)*Bias;
-	Last_Bias=Bias;                                       		//±£´æÉÏÒ»´ÎÆ«²î
-	if(MotorA.Motor_Pwm == 0 && MotorB.Motor_Pwm == 0)			//µç»ú¹Ø±Õ£¬´ËÊ±»ý·ÖÇåÁã
-		Integral_bias = 0;
-	return OutPut;                                          	//Êä³ö
-}
+//float ELE_PID(int Current_ELE_ADC,int Target_ELE_ADC )
+//{
+//	static float Bias,OutPut,Integral_bias,Last_Bias;
+//	Bias=Target_ELE_ADC-Current_ELE_ADC;                        //¼ÆËãÆ«²î
+//	Integral_bias+=Bias;	                                 	//Çó³öÆ«²îµÄ»ý·Ö
+//	if(Integral_bias>5000) Integral_bias=5000;
+//	else if(Integral_bias<-5000) Integral_bias=-5000;
+//	if(Car_Num == Diff_Car)										//³µÐÍ²»Í¬£¬²ÎÊý²»Í¬
+//		OutPut=-ELE_KP_Diff*Bias-ELE_KI_Diff*Integral_bias-ELE_KD_Diff*(Bias-Last_Bias)-ELE_K_Diff*myabs(Bias)*Bias;//Î»ÖÃÊ½PID¿ØÖÆÆ÷
+//	else if(Car_Num == Akm_Car)
+//		OutPut=-ELE_KP_Akm*Bias-ELE_KI_Akm*Integral_bias-ELE_KD_Akm*(Bias-Last_Bias)-ELE_K_Akm*myabs(Bias)*Bias;
+//	else if(Car_Num == Small_Tank_Car)
+//		OutPut=-ELE_KP_STank*Bias-ELE_KI_STank*Integral_bias-ELE_KD_STank*(Bias-Last_Bias)-ELE_K_STank*myabs(Bias)*Bias;
+//	else																					
+//		OutPut=-ELE_KP_BTank*Bias-ELE_KI_BTank*Integral_bias-ELE_KD_BTank*(Bias-Last_Bias)-ELE_K_BTank*myabs(Bias)*Bias;
+//	Last_Bias=Bias;                                       		//±£´æÉÏÒ»´ÎÆ«²î
+//	if(MotorA.Motor_Pwm == 0 && MotorB.Motor_Pwm == 0)			//µç»ú¹Ø±Õ£¬´ËÊ±»ý·ÖÇåÁã
+//		Integral_bias = 0;
+//	return OutPut;                                          	//Êä³ö
+//}
 /**************************************************************************
 Function: CCD_PID
 Input   : Current_Value;Target_Value
@@ -191,26 +206,26 @@ Output  : OutPut
 Èë¿Ú²ÎÊý: µ±Ç°CCDµÄÖµºÍÄ¿±êÖµ
 ·µ»Ø  Öµ£ºµç»úÄ¿±êËÙ¶È
 **************************************************************************/	 	
-float CCD_PID(float Current_Value,float Target_Value )
-{
-	static float Bias,OutPut,Integral_bias,Last_Bias;
-	Bias=Target_Value-Current_Value;                         	 	//¼ÆËãÆ«²î
-	Integral_bias+=Bias;	                                 		//Çó³öÆ«²îµÄ»ý·Ö
-	if(Integral_bias>5000) Integral_bias=5000;
-	else if(Integral_bias<-5000) Integral_bias=-5000;
-	if(Car_Num == Akm_Car)
-		OutPut=(CCD_KP_Akm)*Bias+(CCD_KI_Akm)*Integral_bias+(CCD_KD_Akm)*(Bias-Last_Bias);//Î»ÖÃÊ½PID¿ØÖÆÆ÷
-	else if(Car_Num == Diff_Car)
-		OutPut=CCD_KP_Diff*Bias+CCD_KI_Diff*Integral_bias+CCD_KD_Diff*(Bias-Last_Bias);
-	else if(Car_Num == Small_Tank_Car)
-		OutPut=CCD_KP_STank*Bias+CCD_KI_STank*Integral_bias+CCD_KD_STank*(Bias-Last_Bias);
-	else
-		OutPut=CCD_KP_BTank*Bias+CCD_KI_BTank*Integral_bias+CCD_KD_BTank*(Bias-Last_Bias);
-	Last_Bias=Bias;                                       		//±£´æÉÏÒ»´ÎÆ«²î
-	if(MotorA.Motor_Pwm == 0 && MotorB.Motor_Pwm == 0)			//µç»ú¹Ø±Õ£¬´ËÊ±»ý·ÖÇåÁã
-		Integral_bias = 0;
-	return OutPut;                                       
-}
+//float CCD_PID(float Current_Value,float Target_Value )
+//{
+//	static float Bias,OutPut,Integral_bias,Last_Bias;
+//	Bias=Target_Value-Current_Value;                         	 	//¼ÆËãÆ«²î
+//	Integral_bias+=Bias;	                                 		//Çó³öÆ«²îµÄ»ý·Ö
+//	if(Integral_bias>5000) Integral_bias=5000;
+//	else if(Integral_bias<-5000) Integral_bias=-5000;
+//	if(Car_Num == Akm_Car)
+//		OutPut=(CCD_KP_Akm)*Bias+(CCD_KI_Akm)*Integral_bias+(CCD_KD_Akm)*(Bias-Last_Bias);//Î»ÖÃÊ½PID¿ØÖÆÆ÷
+//	else if(Car_Num == Diff_Car)
+//		OutPut=CCD_KP_Diff*Bias+CCD_KI_Diff*Integral_bias+CCD_KD_Diff*(Bias-Last_Bias);
+//	else if(Car_Num == Small_Tank_Car)
+//		OutPut=CCD_KP_STank*Bias+CCD_KI_STank*Integral_bias+CCD_KD_STank*(Bias-Last_Bias);
+//	else
+//		OutPut=CCD_KP_BTank*Bias+CCD_KI_BTank*Integral_bias+CCD_KD_BTank*(Bias-Last_Bias);
+//	Last_Bias=Bias;                                       		//±£´æÉÏÒ»´ÎÆ«²î
+//	if(MotorA.Motor_Pwm == 0 && MotorB.Motor_Pwm == 0)			//µç»ú¹Ø±Õ£¬´ËÊ±»ý·ÖÇåÁã
+//		Integral_bias = 0;
+//	return OutPut;                                       
+//}
 
 
 
