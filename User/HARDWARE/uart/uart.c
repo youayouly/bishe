@@ -1,10 +1,8 @@
 #include "uart.h"
 
 uint8_t rx_buf[RX_BUF_SIZE];  // 定义接收缓冲区
-uint8_t rx_index = 0;  // 初始化缓冲区索引
-uint8_t data_ready = 0;  // 初始化数据准备标志
-
-
+uint8_t rx_index = 0;         // 初始化缓冲区索引
+uint8_t data_ready = 0;       // 初始化数据准备标志
 
 void UART_Init(void)
 {
@@ -32,8 +30,8 @@ void UART_Init(void)
     // 配置USART为中断源
     NVIC_InitStructure.NVIC_IRQChannel = OPENMV_USART_IRQ;
     NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;  // 抢断优先级
-    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;  // 子优先级
-    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;  // 使能中断
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;         // 子优先级
+    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;            // 使能中断
     NVIC_Init(&NVIC_InitStructure);
 
     // 配置串口的工作参数
@@ -54,6 +52,13 @@ void UART_Init(void)
     USART_Cmd(OPENMV_USARTx, ENABLE);    
 }
 
+// 修改为发送 8 位校验和的文本（转换为 2 位十六进制字符串）
+void USART_SendChecksum_Text(uint8_t checksum) {
+    char buf[3];  // 保存转换后的字符串，格式"XX" + '\0'
+    sprintf(buf, "%02X", checksum); // 转换为2位十六进制字符串，例如"89"
+    USART_SendString(buf);          // 发送这个字符串
+}
+
 void USART_Send(uint8_t data)
 {
     // 等待发送缓冲区为空
@@ -70,74 +75,93 @@ void USART_SendString(const char* str)
     }
 }
 
+//校验和不使用
 void parse_received_data(uint8_t* data) {
-    // 增加长度校验
-    if(strlen((char*)data) < 20) {
-        USART_SendString("ERR:SHORT\n");
-        return;
-    }
-    
-    // 使用安全解析方式
-    int parsed = sscanf((char*)data, "$%hu,%hd,%hd,%hd,%hd,%hhx", 
-                       &ball_detected, &ball_x, &ball_y, &ball_distance, &ball_angle, &checksum);
-                       
-    if(parsed != 6) {
+    USART_SendString("Raw Data: ");
+    USART_SendString((char*)data);
+    USART_SendString("\n");
+
+    uint8_t ball_type;
+    int16_t x, y, distance, angle;
+    uint8_t checksum;
+
+    // 修正格式字符串
+    if (sscanf((char*)data, "$%hhu,%hd,%hd,%hd,%hd,%hhx",
+               &ball_type, &x, &y, &distance, &angle, &checksum) != 6) {
         USART_SendString("ERR:FMT\n");
         return;
     }
+
+    // 校验和计算
+    uint8_t calc = 0;
+    uint8_t bytes[] = {
+        (uint8_t)ball_type,
+        (uint8_t)(x >> 8), (uint8_t)x,
+        (uint8_t)(y >> 8), (uint8_t)y,
+        (uint8_t)(distance >> 8), (uint8_t)distance,
+        (uint8_t)(angle >> 8), (uint8_t)angle
+    };
     
-    // 校验和验证（优化计算顺序）
-    uint8_t calc_checksum = 0;
-    uint8_t* ptr = (uint8_t*)&ball_detected;
-    for(int i=0; i<2; i++) calc_checksum ^= ptr[i]; // ball_type是uint8_t
-    
-    ptr = (uint8_t*)&ball_x;
-    for(int i=0; i<2; i++) calc_checksum ^= ptr[i];
-    
-    ptr = (uint8_t*)&ball_y;
-    for(int i=0; i<2; i++) calc_checksum ^= ptr[i];
-    
-    ptr = (uint8_t*)&ball_distance;
-    for(int i=0; i<2; i++) calc_checksum ^= ptr[i];
-    
-    ptr = (uint8_t*)&ball_angle;
-    for(int i=0; i<2; i++) calc_checksum ^= ptr[i];
-    
-    if(calc_checksum != checksum) {
-        USART_SendString("NAK\n");
+    for(int i=0; i<sizeof(bytes); i++) 
+        calc ^= bytes[i];
+
+    if(calc != checksum) {
+        USART_SendString("CALC: ");
+        USART_SendChecksum_Text(calc);
+        USART_SendString(" NAK\n");
         return;
     }
-    
-    // 数据有效性检查
-    if(abs(ball_x) > 640 || abs(ball_y) > 480 || ball_distance < 0) {
-        USART_SendString("ERR:INVALID\n");
+
+    // 修正范围检查
+    if(x < 0 || x > 640 || y < 0 || y > 480 || distance < 0) {
+        USART_SendString("ERR:RANGE\n");
         return;
     }
-    
-    // 更新球数据
-    ball_last_tick = GET_TICK();
-    ball_detected = 1;
+
+    // 更新数据
+    ball_detected = ball_type;
+    ball_x = x;
+    ball_y = y;
+    ball_distance = distance;
+    ball_angle = angle;
     USART_SendString("ACK\n");
 }
 
-
 void OPENMV_USART_IRQHandler(void) {
-    if (USART_GetITStatus(OPENMV_USARTx, USART_IT_RXNE) != RESET) {
+    if(USART_GetITStatus(OPENMV_USARTx, USART_IT_RXNE) != RESET) {
         uint8_t ch = USART_ReceiveData(OPENMV_USARTx);
-
-        if (ch == '$') {  // 检测到起始符
+        
+        // 帧起始检测
+        if(ch == '$' && rx_index == 0) {
             rx_index = 0;
             rx_buf[rx_index++] = ch;
-        } else if (rx_index > 0 && rx_index < RX_BUF_SIZE - 1) {
+        } 
+        // 数据积累
+        else if(rx_index > 0 && rx_index < RX_BUF_SIZE-1) {
             rx_buf[rx_index++] = ch;
-            if (ch == '\n') {  // 检测到结束符
+            if(ch == '\n') {  // 检测到结束符
                 rx_buf[rx_index] = '\0';
-                data_ready = 1;
-                parse_received_data(rx_buf);
+                
+                // 透传显示原始数据
+                USART_SendString("[STM32接收] ");
+                USART_SendString((char*)rx_buf);
+                
+                // 解析数据
+                int16_t type, x, y, dist, angle;
+                if(sscanf((char*)rx_buf, "$%hd,%hd,%hd,%hd,%hd", 
+                         &type, &x, &y, &dist, &angle) == 5) {
+                    // 更新控制变量
+                    ball_detected = type;
+                    ball_x = x;
+                    ball_y = y;
+                    ball_distance = dist;
+                    ball_angle = angle;
+                    
+                    // 回传ACK
+                    USART_SendString("[STM32发送] ACK\n");
+                }
                 rx_index = 0;
             }
-        } else {
-            rx_index = 0;  // 非法数据重置
         }
         USART_ClearITPendingBit(OPENMV_USARTx, USART_IT_RXNE);
     }

@@ -15,6 +15,9 @@ void parse_received_data(uint8_t* data);
 
 void OPENMV_USART_IRQHandler(void) ;
 // 定义接收缓冲区大小
+
+void USART_SendChecksum_Text(uint8_t checksum);
+
 #define RX_BUF_SIZE 64
 
 
