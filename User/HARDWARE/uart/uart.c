@@ -75,90 +75,64 @@ void USART_SendString(const char* str)
     }
 }
 
-//校验和不使用
 void parse_received_data(uint8_t* data) {
-    USART_SendString("Raw Data: ");
-    USART_SendString((char*)data);
-    USART_SendString("\n");
-
-    uint8_t ball_type;
+    uint8_t parsed_ball_detected;
     int16_t x, y, distance, angle;
-    uint8_t checksum;
 
-    // 修正格式字符串
-    if (sscanf((char*)data, "$%hhu,%hd,%hd,%hd,%hd,%hhx",
-               &ball_type, &x, &y, &distance, &angle, &checksum) != 6) {
+    if (sscanf((char*)data, "$%hhu,%hd,%hd,%hd,%hd", 
+               &parsed_ball_detected, &x, &y, &distance, &angle) != 5) {
         USART_SendString("ERR:FMT\n");
         return;
     }
 
-    // 校验和计算
-    uint8_t calc = 0;
-    uint8_t bytes[] = {
-        (uint8_t)ball_type,
-        (uint8_t)(x >> 8), (uint8_t)x,
-        (uint8_t)(y >> 8), (uint8_t)y,
-        (uint8_t)(distance >> 8), (uint8_t)distance,
-        (uint8_t)(angle >> 8), (uint8_t)angle
-    };
-    
-    for(int i=0; i<sizeof(bytes); i++) 
-        calc ^= bytes[i];
-
-    if(calc != checksum) {
-        USART_SendString("CALC: ");
-        USART_SendChecksum_Text(calc);
-        USART_SendString(" NAK\n");
-        return;
-    }
-
-    // 修正范围检查
-    if(x < 0 || x > 640 || y < 0 || y > 480 || distance < 0) {
+    if (x < 0 || x > 640 || y < 0 || y > 480 || distance < 0) {
         USART_SendString("ERR:RANGE\n");
         return;
     }
 
-    // 更新数据
-    ball_detected = ball_type;
+    // 如果所有数据均为0，则不发送数据
+    if (parsed_ball_detected == 0 && x == 0 && y == 0 && distance == 0 && angle == 0) {
+        return;
+    }
+
+    // 更新全局变量
+    ball_detected = parsed_ball_detected;
     ball_x = x;
     ball_y = y;
     ball_distance = distance;
     ball_angle = angle;
+
+    // 发送 ACK 回复
     USART_SendString("ACK\n");
 }
 
+// UART中断处理函数
 void OPENMV_USART_IRQHandler(void) {
-    if(USART_GetITStatus(OPENMV_USARTx, USART_IT_RXNE) != RESET) {
+    if (USART_GetITStatus(OPENMV_USARTx, USART_IT_RXNE) != RESET) {
         uint8_t ch = USART_ReceiveData(OPENMV_USARTx);
         
         // 帧起始检测
-        if(ch == '$' && rx_index == 0) {
+        if (ch == '$' && rx_index == 0) {
             rx_index = 0;
             rx_buf[rx_index++] = ch;
-        } 
+        }
         // 数据积累
-        else if(rx_index > 0 && rx_index < RX_BUF_SIZE-1) {
+        else if (rx_index > 0 && rx_index < RX_BUF_SIZE - 1) {
             rx_buf[rx_index++] = ch;
-            if(ch == '\n') {  // 检测到结束符
+            if (ch == '\n') {  // 检测到帧结束符
                 rx_buf[rx_index] = '\0';
-                
-                // 透传显示原始数据
-                USART_SendString("[STM32接收] ");
-                USART_SendString((char*)rx_buf);
-                
-                // 解析数据
-                int16_t type, x, y, dist, angle;
-                if(sscanf((char*)rx_buf, "$%hd,%hd,%hd,%hd,%hd", 
-                         &type, &x, &y, &dist, &angle) == 5) {
-                    // 更新控制变量
-                    ball_detected = type;
-                    ball_x = x;
-                    ball_y = y;
-                    ball_distance = dist;
-                    ball_angle = angle;
-                    
-                    // 回传ACK
-                    USART_SendString("[STM32发送] ACK\n");
+                int16_t parsed_type, x, y, dist, angle;
+                if (sscanf((char*)rx_buf, "$%hd,%hd,%hd,%hd,%hd", 
+                           &parsed_type, &x, &y, &dist, &angle) == 5) {
+                    // 若所有数据均为0，则不发送回复
+                    if (!(parsed_type == 0 && x == 0 && y == 0 && dist == 0 && angle == 0)) {
+                        ball_detected = parsed_type;
+                        ball_x = x;
+                        ball_y = y;
+                        ball_distance = dist;
+                        ball_angle = angle;
+                        USART_SendString("ACK\n");
+                    }
                 }
                 rx_index = 0;
             }
