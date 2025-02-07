@@ -46,6 +46,5 @@ float Along_Adjust_PID(float Current_Distance,float Target_Distance);
 
 void control_motor_steering(uint8_t type, int16_t x, int16_t y);//ÇòµÄpid
 
-void Reset_Incremental_PI_Left(void);
-void Reset_Incremental_PI_Right(void);
+
 #endif

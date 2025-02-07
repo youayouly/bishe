@@ -30,23 +30,15 @@ extern uint8_t checksum;
 
 
 extern uint32_t ball_last_tick;
+
 extern uint8_t ball_detected_counter;
-
-extern float last_error;
-extern uint8_t stable_count;
-extern float filtered_x;
-extern float error_x;
-extern float error_d ; // 微分项
-extern float Vx,Vz;
-extern float distance_ratio;
-
 
 #define BALL_TIMEOUT 200 // 200*5ms=1秒超时
 //-----------在control.h中添加宏定义-----------
 #define BALL_CENTER_X        320     // 图像中心X坐标
 #define BALL_DEADZONE_X      10      // 转向死区
 #define STOP_DISTANCE        0.38f    // 停止距离(米)
-#define TURN_SPEED           0.4f    // 转向速度
+#define TURN_SPEED           0.15f    // 转向速度
 #define FORWARD_SPEED        0.15f    // 前进速度
 
 #define MIN_TRACK_DISTANCE   0.4f    // 最小追踪距离(米)
@@ -54,7 +46,7 @@ extern float distance_ratio;
 #define MAX_TRACK_SPEED      0.2f    // 最大前进速度
 #define MAX_TURN_RATE        1.0f    // 最大转向速度
 #define TRACK_P_GAIN        0.008f   // 转向比例系数
-#define SAFE_DISTANCE       0.4f     // 安全停止距离
+#define SAFE_DISTANCE       0.5f     // 安全停止距离
 
 // 比例控制参数
 #define KP 0.005f       // 转向比例系数
@@ -76,21 +68,6 @@ extern float distance_ratio;
 #define MAX_TURN             0.8f    // 最大转向速度（rad/s）
 #define D_WEIGHT             0.2f    // 微分项权重
 #define FILTER_FACTOR        0.3f    // 低通滤波系数
-// 新增稳定性检测参数
-#define STABLE_COUNT_THRESHOLD 20  // 100ms稳定时间
-#define SPEED_THRESHOLD        0.1f // m/s
-
-
-#define SLOW_DOWN_DIST       0.8f   // 开始减速距离 
-#define APPROACH_SPEED       0.4f   // 接近速度
-#define ALIGN_SPEED          0.2f   // 对准速度
-#define STEER_KP             0.002f // 转向比例
-#define STEER_KD             0.001f // 转向微分
-#define MAX_STEER            0.7f   // 最大转向量
-#define STEER_DEADZONE       20     // 像素死区
-
-
-
 
 
 //PWM限制最大最小值
@@ -200,14 +177,6 @@ typedef struct
   int B;  
 }Encoder;
 
-
-// 数据滤波结构体
-typedef struct {
-    float x;
-    float dist;
-    uint32_t last_update;
-} BallFilter;
-
 extern u16 mini_distance1;
 extern float angle1;
 extern short Accel_Y,Accel_Z,Accel_X,Accel_Angle_x,Accel_Angle_y,Gyro_X,Gyro_Z,Gyro_Y;
@@ -246,11 +215,5 @@ void Get_Angle(u8 way);
 
 
 void Track_Ball(void);//追球
-// 数据有效性检查
-uint8_t is_valid_data(int16_t x, int16_t dist);
-// 低通滤波
-void update_ball_filter(int16_t x, int16_t dist);
-
-
 
 #endif

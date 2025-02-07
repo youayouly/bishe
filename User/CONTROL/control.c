@@ -27,58 +27,20 @@ uint8_t checksum = 0;
 int16_t ball_angle = 0;
 int16_t ball_distance = 0;
 
-float last_error = 0.0f; // 需改为全局变量
-uint8_t stable_count = 0;
-float filtered_x = BALL_CENTER_X;
-
-float Vx = 0.0f, Vz = 0.0f;
-float distance_ratio = 0.0f;
 
 //停止函数
-// 增强版停止控制
-void Stop_Motor_With_Kinematics(void) 
-{
-    // 运动学清零
-    Get_Target_Encoder(0.0f, 0.0f);
-    Move_X = 0; 
+void Stop_Motor_With_Kinematics(void) {
+    // 调用运动学逆解函数，速度和角度均为0
+    Get_Target_Encoder(0.0f, 0.0f); // Vx=0, Vz=0
+  
+  
+    Move_X = 0;
     Move_Z = 0;
-    
-    // 电机控制清零
-    MotorA.Target_Encoder = MotorA.Current_Encoder; // 保持当前编码器值
-    MotorB.Target_Encoder = MotorB.Current_Encoder;
-    
-    // 强制PWM输出0
+    MotorA.Target_Encoder = 0;
+    MotorB.Target_Encoder = 0;
+    // 直接设置PWM为0
     Set_Pwm(0, 0);
-    
-    // 重置所有控制器状态
-    Reset_Incremental_PI_Left();
-    Reset_Incremental_PI_Right();
-    MotorA.Current_Encoder = MotorB.Current_Encoder = 0;
-    
-    // 清空跟踪状态
-
-    last_error = 0.0f;
-}
-BallFilter ball_filter = {0};
-
-// 数据有效性检查
-uint8_t is_valid_data(int16_t x, int16_t dist) {
-    return (x >= 0 && x < 640 && 
-           dist > 10 && dist < 800 && // 10cm~8m
-           (sys_tick - ball_filter.last_update) < 200); // 1秒超时
-}
-
-// 低通滤波
-void update_ball_filter(int16_t x, int16_t dist) {
-    const float alpha = 0.3f;
-    if(ball_filter.last_update == 0) {
-        ball_filter.x = x;
-        ball_filter.dist = dist;
-    } else {
-        ball_filter.x = alpha*x + (1-alpha)*ball_filter.x;
-        ball_filter.dist = alpha*dist + (1-alpha)*ball_filter.dist;
-    }
-    ball_filter.last_update = sys_tick;
+    // 调试输出
 }
 
 // 定义全局变量（实际内存分配）
@@ -96,7 +58,7 @@ Output  : none
 int TIMING_TIM_IRQHandler(void)
 {
   
-  static uint8_t stop_cnt = 0;
+  
 	static u8 Count_CCD = 0;								//调节CCD控制频率
 	if(TIM_GetITStatus( TIMING_TIM, TIM_IT_Update) != RESET ) //不等于1 ==0
 	{			
@@ -133,30 +95,20 @@ int TIMING_TIM_IRQHandler(void)
                         break;
                         
                     case BALL_TRACKING:
-                        
                         if(!ball_detected) {
-                                current_mode2 = LIDAR_AVOID;
+                            current_mode2 = LIDAR_AVOID;
+                            Stop_Motor_With_Kinematics();
+                        } else {
+                            Track_Ball();
+                            // 中心区域检测
+                            if((abs(ball_x - BALL_CENTER_X) < BALL_DEADZONE) && (ball_distance <= STOP_DISTANCE * 1.2f)) {
+                                // 球已经对准且接近，停止运动
                                 Stop_Motor_With_Kinematics();
-                            } else {
-                                Track_Ball();
-                                
-                                // 新增停止条件（速度+位置）
-                                if(fabsf(MotorA.Current_Encoder) < 0.05f && 
-                                   fabsf(MotorB.Current_Encoder) < 0.05f &&
-                                   fabsf(ball_filter.x - BALL_CENTER_X) < 30 &&
-                                   ball_filter.dist < SAFE_DISTANCE*1.1f) 
-                                {
-                                   
-                                    if(++stop_cnt > 20) { // 100ms稳定
-                                        Stop_Motor_With_Kinematics();
-                                        current_mode2 = LIDAR_AVOID;
-                                        stop_cnt = 0;
-                                    }
-                                } else {
-                                    stop_cnt = 0;
-                                }
+                                return 0;
+                            
                             }
-                            break;
+                        }
+                        break;
                 }
                 break;
                 
@@ -203,68 +155,49 @@ int TIMING_TIM_IRQHandler(void)
 }
 
 
-
+// 球追踪控制函数
 void Track_Ball(void) {
   
-    static float last_error = 0;
-    static uint8_t align_cnt = 0;
-    
-    // 数据有效性检查
-    if(!is_valid_data(ball_x, ball_distance)) {
-        Stop_Motor_With_Kinematics();
-        return;
-    }
-    
-    // 更新滤波数据
-    update_ball_filter(ball_x, ball_distance);
-    float cur_x = ball_filter.x;
-    float cur_dist = ball_filter.dist;
-    
-    // 计算误差
-    float error_x = BALL_CENTER_X - cur_x;
-    float error_d = error_x - last_error;
-    last_error = error_x;
-    
-    // 距离控制策略
-    float target_speed = 0;
-    if(cur_dist > SLOW_DOWN_DIST) {
-        target_speed = APPROACH_SPEED;
-    } else if(cur_dist > SAFE_DISTANCE) {
-        target_speed = APPROACH_SPEED * (cur_dist - SAFE_DISTANCE)/(SLOW_DOWN_DIST - SAFE_DISTANCE);
-    } else {
-        target_speed = -0.3f; // 后退速度
-    }
-    
-    // 转向控制
-    float steer = 0;
-    if(fabsf(error_x) > STEER_DEADZONE) {
-        steer = STEER_KP*error_x + STEER_KD*error_d;
-        steer = target_limit_float(steer, -MAX_STEER, MAX_STEER);
+  
+      float Vx = 0, Vz = 0;
+  
+      Vx = FORWARD_SPEED;
+      // 这里利用 ball_angle 进行转向调整（假设 ball_angle 为正表示偏右，负表示偏左）
+      float Kp = 0.005f;  // 比例控制增益，根据实际情况调节
+      Vz = -Kp * ball_angle;  // 如果 ball_angle 为负，则 Vz 为正，即向右转
+      
+  
+    // 1. 距离控制
+    if(ball_distance > 0.3f ) {
+        Vx = FORWARD_SPEED;
         
-        // 距离相关增益
-        float dist_gain = target_speed > 0 ? 
-                        cur_dist/SLOW_DOWN_DIST : 
-                        1.0f;
-        steer *= dist_gain;
-    }
-    
-    // 对准检测
-    if(fabsf(error_x) < 30 && cur_dist < SAFE_DISTANCE*1.2) {
-        if(++align_cnt > 50) { // 250ms稳定
-            Stop_Motor_With_Kinematics();
-            align_cnt = 0;
-            return;
+        // 2. 方向控制
+        if(ball_x < (BALL_CENTER_X - BALL_DEADZONE_X)) { // 左转
+            Vz = Kp * ball_angle;  // 如果 ball_angle 为负，则 Vz 为正，即向右转
+        } 
+        else if(ball_x > (BALL_CENTER_X + BALL_DEADZONE_X)) { // 右转
+       
+            Vz = -Kp * ball_angle;  // 如果 ball_angle 为负，则 Vz 为正，即向右转
         }
-    } else {
-        align_cnt = 0;
+            
+         // 限幅处理，确保转向速度不会过大
+        if(Vz > TURN_SPEED)  Vz = TURN_SPEED;
+        if(Vz < -TURN_SPEED) Vz = -TURN_SPEED;
+        
+
+        
+        // 3. 减速控制
+        if(ball_distance > 0.3f && ball_distance < STOP_DISTANCE) {
+            Vx = - 0.5f;
+        }
+    } 
+    else { // 到达停止距离
+        Vx = 0;
+        Vz = 0;
     }
-    
-    // 执行运动
-    Get_Target_Encoder(target_speed, steer);
+
+    Get_Target_Encoder(Vx, Vz);
 }
-
-
-
 /**************************************************************************
 Function: Bluetooth_Control
 Input   : none
@@ -405,38 +338,44 @@ Output  : none
 //阿克曼车Vz是舵机转向的角度(弧度制)
 void Get_Target_Encoder(float Vx,float Vz)
 {
-  
- // 阿克曼转向约束
-    const float MIN_TURN_RADIUS = 0.6f; // 最小转弯半径
-  
-    if(Car_Num == Akm_Car) {
-        // 计算理论转向角
-        float steer_angle = 0;
-        if(fabsf(Vz) > 0.01f) {
-            float R = Vx / Vz;
-            if(fabsf(R) < MIN_TURN_RADIUS) {
-                R = MIN_TURN_RADIUS * (R > 0 ? 1 : -1);
-                Vz = Vx / R;
-            }
-            steer_angle = atanf(Akm_axlespacing / R);
-        }
-        
-        // 转向角限幅
-        steer_angle = target_limit_float(steer_angle, 
-                                      -MAX_STEER, 
-                                      MAX_STEER);
-        
-        // 平滑过渡
-        static float last_angle = 0;
-        float max_delta = 5.0f * Pi/180.0f * 0.005f; // 5度/秒
-        steer_angle = last_angle + target_limit_float(steer_angle - last_angle, 
-                                                    -max_delta, 
-                                                    max_delta);
-        last_angle = steer_angle;
-        
-        // 计算舵机PWM
-        Servo_PWM = SERVO_INIT + (int)(steer_angle * 1800.0f/Pi);
-    }
+	float MotorA_Velocity,MotorB_Velocity;
+	float amplitude=3.5f; //Wheel target speed limit //车轮目标速度限幅
+	if(Car_Num==Akm_Car)							//阿克曼车
+	{
+		//Ackerman car specific related variables //阿克曼小车专用相关变量
+			float R, ratio=640.62, AngleR, Angle_Servo;
+			
+			// For Ackerman small car, Vz represents the front wheel steering Angle
+			//对于阿克曼小车Vz代表右前轮转向角度
+			AngleR=Vz;
+			R=Akm_axlespacing/tan(AngleR)-0.5f*Akm_wheelspacing;
+			// Front wheel steering Angle limit (front wheel steering Angle controlled by steering engine), unit: rad
+			//前轮转向角度限幅(舵机控制前轮转向角度)，单位：rad
+			AngleR=target_limit_float(AngleR,-0.49f,0.32f);
+			//Inverse kinematics //运动学逆解
+			if(AngleR!=0)
+			{
+				MotorA.Target_Encoder = Vx*(R-0.081f)/R;
+				MotorB.Target_Encoder = Vx*(R+0.081f)/R;			
+			}
+			else 
+			{
+				MotorA.Target_Encoder = Vx;
+				MotorB.Target_Encoder = Vx;
+			}
+
+			// The PWM value of the servo controls the steering Angle of the front wheel
+			//舵机PWM值，舵机控制前轮转向角度  根据角度算出pwm数值
+			Angle_Servo = -0.628f*pow(AngleR, 3) + 1.269f*pow(AngleR, 2) - 1.772f*AngleR + 1.573f;
+			Servo_PWM=SERVO_INIT + (Angle_Servo - 1.572f)*ratio;
+
+			
+			//Wheel (motor) target speed limit //车轮(电机)目标速度限幅
+			MotorA.Target_Encoder=target_limit_float(MotorA.Target_Encoder,-amplitude,amplitude); 
+			MotorB.Target_Encoder=target_limit_float(MotorB.Target_Encoder,-amplitude,amplitude); 
+			Servo_PWM=target_limit_int(Servo_PWM,800,2200);	//Servo PWM value limit //舵机PWM值限幅
+
+	}
 //	else if(Car_Num==Diff_Car)											//差速小车
 //	{
 //		  if(Vx<0) Vz=-Vz;
@@ -958,7 +897,3 @@ void Get_Angle(u8 way)
 		}
 	}
 }
-
-
-
-

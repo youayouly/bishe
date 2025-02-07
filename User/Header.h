@@ -1,3 +1,22 @@
+/***********************************************
+公司：轮趣科技（东莞）有限公司
+品牌：WHEELTEC
+官网：wheeltec.net
+淘宝店铺：shop114407458.taobao.com 
+速卖通: https://minibalance.aliexpress.com/store/4455017
+版本：V1.0
+修改时间：2023-03-02
+
+Brand: WHEELTEC
+Website: wheeltec.net
+Taobao shop: shop114407458.taobao.com 
+Aliexpress: https://minibalance.aliexpress.com/store/4455017
+Version: V1.0
+Update：2023-03-02
+
+All rights reserved
+***********************************************/
+
 #ifndef __HEADER_H
 #define __HEADER_H
 
@@ -37,7 +56,6 @@
 #include "inv_mpu.h"
 #include "filter.h"
 //#include "show.h"
-#include <math.h>
 
 extern u16 Voltage;						//电压变量，放大100倍储存
 extern u8 Flag_Stop;					//电机启停标志位

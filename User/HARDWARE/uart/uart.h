@@ -26,8 +26,4 @@ extern uint8_t rx_buf[RX_BUF_SIZE];  // 接收缓冲区
 extern uint8_t rx_index;  // 缓存索引
 extern uint8_t data_ready;  // 数据是否准备好
 
-
-extern uint8_t pkt_cnt ;
-extern uint8_t state ;
-
 #endif  // __UART_H

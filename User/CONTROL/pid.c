@@ -1,11 +1,5 @@
 #include "pid.h"
 
-// 假设这是你的 PI 控制器内部使用的静态变量
-static float integral_left = 0.0f;
-static float integral_right = 0.0f;
-static const float Kp_left = 0.1f, Ki_left = 0.01f;
-static const float Kp_right = 0.1f, Ki_right = 0.01f;
-
 //float Velocity_KP = 0.18f,Velocity_KI = 0.17f;	//增量式PI参数，用于电机速度控制，光电编码器参数
 float Velocity_KP = 200,Velocity_KI = 140;			//增量式PI参数，用于电机速度控制，霍尔编码器参数
 
@@ -60,7 +54,7 @@ int Incremental_PI_Left (float Encoder,float Target)
 //	 if(Pwm>7200)Pwm=7200;
 //	 if(Pwm<-7200)Pwm=-7200;
 	 Last_bias=Bias;	                   					//保存上一次偏差 
-	 return (int)Pwm;                       					//增量输出
+	 return Pwm;                         					//增量输出
 }
 
 
@@ -72,16 +66,9 @@ int Incremental_PI_Right (float Encoder,float Target)
 //	 if(Pwm>7200)Pwm=7200;
 //	 if(Pwm<-7200)Pwm=-7200;
 	 Last_bias=Bias;	                   					//保存上一次偏差 
-	 return (int)Pwm;                       					//增量输出
+	 return Pwm;                         					//增量输出
 }
 
-void Reset_Incremental_PI_Left(void) {
-    integral_left = 0.0f;
-}
-
-void Reset_Incremental_PI_Right(void) {
-    integral_right = 0.0f;
-}
 /**************************************************************************
 Function: Distance_Adjust_PID
 Input   : Current_Distance;Target_Distance
