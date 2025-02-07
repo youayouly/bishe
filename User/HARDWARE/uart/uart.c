@@ -131,6 +131,17 @@ void OPENMV_USART_IRQHandler(void) {
                         ball_y = y;
                         ball_distance = dist;
                         ball_angle = angle;
+//                        USART_SendString((char*)rx_buf);
+                      
+                          // 更新检测计数器
+//                        if(ball_distance > 0) {
+//                            if(ball_detected_counter < DETECTION_THRESHOLD*2)
+//                                ball_detected_counter++;
+//                        } else {
+//                            if(ball_detected_counter > 0)
+//                                ball_detected_counter--;
+//                        }
+
                         USART_SendString("ACK\n");
                     }
                 }
