@@ -97,16 +97,16 @@ int TIMING_TIM_IRQHandler(void)
                     case BALL_TRACKING:
                         if(!ball_detected) {
                             current_mode2 = LIDAR_AVOID;
-                            Stop_Motor_With_Kinematics();
+//                            Stop_Motor_With_Kinematics();
                         } else {
                             Track_Ball();
                             // 中心区域检测
-                            if((abs(ball_x - BALL_CENTER_X) < BALL_DEADZONE) && (ball_distance <= STOP_DISTANCE * 1.2f)) {
-                                // 球已经对准且接近，停止运动
-                                Stop_Motor_With_Kinematics();
-                                return 0;
-                            
-                            }
+//                            if((abs(ball_x - BALL_CENTER_X) < BALL_DEADZONE) && (ball_distance <= STOP_DISTANCE)) {
+//                                // 球已经对准且接近，停止运动
+//                                Stop_Motor_With_Kinematics();
+//                                return 0;
+//                            
+//                            }
                         }
                         break;
                 }
@@ -159,44 +159,55 @@ int TIMING_TIM_IRQHandler(void)
 void Track_Ball(void) {
   
   
-      float Vx = 0, Vz = 0;
+      // 1. 补码转换：确保 ball_angle 正确为带符号数（如果后续不使用 ball_angle，可忽略）
+    if (ball_angle > 32767) {
+        ball_angle = ball_angle - 65536;
+    }
+    
+    // 2. 将 ball_distance 从毫米转换为米（假设 ball_distance 大于 10 才有效）
+    if (ball_distance > 10) {
+        ball_distance = ball_distance / 1000.0f;
+    }
+        float Vx = 0, Vz = 0;
   
       Vx = FORWARD_SPEED;
       // 这里利用 ball_angle 进行转向调整（假设 ball_angle 为正表示偏右，负表示偏左）
       float Kp = 0.005f;  // 比例控制增益，根据实际情况调节
-      Vz = -Kp * ball_angle;  // 如果 ball_angle 为负，则 Vz 为正，即向右转
+      //Vz = -Kp * ball_angle;  // 如果 ball_angle 为负，则 Vz 为正，即向右转
       
   
     // 1. 距离控制
-    if(ball_distance > 0.3f ) {
+    if(ball_distance > STOP_DISTANCE ) {
         Vx = FORWARD_SPEED;
         
         // 2. 方向控制
-        if(ball_x < (BALL_CENTER_X - BALL_DEADZONE_X)) { // 左转
+        if(ball_x < (BALL_CENTER_X - BALL_DEADZONE_X)) { // 左转 320 10 310
             Vz = Kp * ball_angle;  // 如果 ball_angle 为负，则 Vz 为正，即向右转
         } 
         else if(ball_x > (BALL_CENTER_X + BALL_DEADZONE_X)) { // 右转
        
             Vz = -Kp * ball_angle;  // 如果 ball_angle 为负，则 Vz 为正，即向右转
         }
+        
+        else{
+           Vz=0;
+        }
             
          // 限幅处理，确保转向速度不会过大
         if(Vz > TURN_SPEED)  Vz = TURN_SPEED;
         if(Vz < -TURN_SPEED) Vz = -TURN_SPEED;
-        
-
-        
-        // 3. 减速控制
-        if(ball_distance > 0.3f && ball_distance < STOP_DISTANCE) {
+    }    
+            // 3. 减速控制
+    else if(ball_distance > STOP_DISTANCE && ball_distance <= 0.75f) {
             Vx = - 0.5f;
         }
-    } 
     else { // 到达停止距离
         Vx = 0;
         Vz = 0;
     }
 
     Get_Target_Encoder(Vx, Vz);
+
 }
 /**************************************************************************
 Function: Bluetooth_Control
