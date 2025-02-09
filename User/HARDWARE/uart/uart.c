@@ -147,6 +147,7 @@ void OPENMV_USART_IRQHandler(void) {
                 rx_index = 0;
             }
         }
+        
         USART_ClearITPendingBit(OPENMV_USARTx, USART_IT_RXNE);
     }
 }

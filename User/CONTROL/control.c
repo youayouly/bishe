@@ -67,8 +67,18 @@ int TIMING_TIM_IRQHandler(void)
     sys_tick++; // 每5ms自增1
         // ...原有逻辑...
     
+            // 检查是否超时未接收到球数据
+        if ((sys_tick - ball_last_tick) > BALL_TIMEOUT) {
+            // 超时了：认为球丢失，停止车辆，切换到避障模式
+            Stop_Motor_With_Kinematics();
+            // 可以选择更新模式变量，比如：
+            current_mode2 = LIDAR_AVOID;
+        }
+        
 		Get_Velocity_From_Encoder();								//读取左右编码器的值且转换成速度
         Get_KeyVal();		 		
+    
+    
 		if(delay_flag)												//50ms延时
 		{
 			if(++delay_50==10) delay_50=0,delay_flag=0;            	//给主函数提供50ms的精准延时，主要是用于上位机示波器
@@ -78,35 +88,35 @@ int TIMING_TIM_IRQHandler(void)
             case Normal_Mode:
                 if(++Ros_count == 10) {
                     Get_Angle(2);
-                    Ros_count=0;
+                    Ros_count = 0;
                 }
                 break;
-                
             case Lidar_Avoid_Mode:
                 switch(current_mode2) {
                     case LIDAR_AVOID:
                         if(ball_detected) {
                             current_mode2 = BALL_TRACKING;
+                            // 更新ball_last_tick，当球数据有效时
+                            ball_last_tick = sys_tick;
                             Stop_Motor_With_Kinematics();
                         } else {
-                            Lidar_Avoid();  // 保持原有避障逻辑
-                            Get_Target_Encoder(Move_X, Move_Z); // 新增运动学转换
+                            Lidar_Avoid();
+                            Get_Target_Encoder(Move_X, Move_Z);
                         }
                         break;
-                        
                     case BALL_TRACKING:
                         if(!ball_detected) {
                             current_mode2 = LIDAR_AVOID;
-//                            Stop_Motor_With_Kinematics();
+                            Stop_Motor_With_Kinematics();
                         } else {
                             Track_Ball();
-                            // 中心区域检测
-//                            if((abs(ball_x - BALL_CENTER_X) < BALL_DEADZONE) && (ball_distance <= STOP_DISTANCE)) {
-//                                // 球已经对准且接近，停止运动
-//                                Stop_Motor_With_Kinematics();
-//                                return 0;
-//                            
-//                            }
+                            // 检查是否达到停止条件
+                            if((abs(ball_x - BALL_CENTER_X) < BALL_DEADZONE) && (fabsf(ball_distance - TARGET_DISTANCE) < DIST_DEADZONE)) {
+                                Stop_Motor_With_Kinematics();
+                                //return 0;
+                            }
+                            // 每次检测到球数据，更新 ball_last_tick
+                            ball_last_tick = sys_tick;
                         }
                         break;
                 }
@@ -155,60 +165,82 @@ int TIMING_TIM_IRQHandler(void)
 }
 
 
-// 球追踪控制函数
 void Track_Ball(void) {
-  
-  
-      // 1. 补码转换：确保 ball_angle 正确为带符号数（如果后续不使用 ball_angle，可忽略）
+    // 1. 补码转换：确保 ball_angle 为带符号数
     if (ball_angle > 32767) {
         ball_angle = ball_angle - 65536;
     }
     
-    // 2. 将 ball_distance 从毫米转换为米（假设 ball_distance 大于 10 才有效）
+    // 2. 将 ball_distance 从毫米转换为米（假设 ball_distance > 10 有效）
     if (ball_distance > 10) {
         ball_distance = ball_distance / 1000.0f;
     }
-        float Vx = 0, Vz = 0;
-  
-      Vx = FORWARD_SPEED;
-      // 这里利用 ball_angle 进行转向调整（假设 ball_angle 为正表示偏右，负表示偏左）
-      float Kp = 0.005f;  // 比例控制增益，根据实际情况调节
-      //Vz = -Kp * ball_angle;  // 如果 ball_angle 为负，则 Vz 为正，即向右转
-      
-  
-    // 1. 距离控制
-    if(ball_distance > STOP_DISTANCE ) {
-        Vx = FORWARD_SPEED;
-        
-        // 2. 方向控制
-        if(ball_x < (BALL_CENTER_X - BALL_DEADZONE_X)) { // 左转 320 10 310
-            Vz = Kp * ball_angle;  // 如果 ball_angle 为负，则 Vz 为正，即向右转
-        } 
-        else if(ball_x > (BALL_CENTER_X + BALL_DEADZONE_X)) { // 右转
-       
-            Vz = -Kp * ball_angle;  // 如果 ball_angle 为负，则 Vz 为正，即向右转
-        }
-        
-        else{
-           Vz=0;
-        }
-            
-         // 限幅处理，确保转向速度不会过大
-        if(Vz > TURN_SPEED)  Vz = TURN_SPEED;
-        if(Vz < -TURN_SPEED) Vz = -TURN_SPEED;
-    }    
-            // 3. 减速控制
-    else if(ball_distance > STOP_DISTANCE && ball_distance <= 0.75f) {
-            Vx = - 0.5f;
-        }
-    else { // 到达停止距离
+    
+
+    // 假设水平中心为 BALL_CENTER_X（320），水平容差设为 BALL_DEADZONE_X（20像素）
+    
+    // 定义控制增益
+    const float K_distance = 0.5f;  // 前后控制增益
+    const float K_turn = 0.005f;    // 左右转向控制增益
+    
+    // 定义速度上限
+    const float MAX_FORWARD_SPEED = FORWARD_SPEED;   // 0.15 m/s
+    const float MAX_BACKWARD_SPEED = 0.10f;            // 限制后退速度（0.10 m/s）
+    
+    float Vx = 0, Vz = 0;
+    
+    // 计算误差：水平误差与距离误差
+    int error_x = ball_x - BALL_CENTER_X;  //320
+    float error_distance = ball_distance - TARGET_DISTANCE; //0.7
+    
+    // ① 前后运动控制（基于距离误差） 1.1 0.7  0.08
+    if (fabsf(error_distance) < DIST_DEADZONE) {
+        // 当距离在容差范围内，认为达到目标，不运动
         Vx = 0;
+    }
+    else if (error_distance > 0) {  
+        // 球太远，前进
+        Vx = K_distance * error_distance;
+        if (Vx > MAX_FORWARD_SPEED) {
+            Vx = MAX_FORWARD_SPEED;
+        }
+    }
+    else {  
+        // 球太近，后退
+        // 加入一个负误差死区：如果误差大于 -0.05m，则不后退
+        if (error_distance > -0.05f) {
+            Vx = 0;
+        } else {
+            Vx = K_distance * error_distance;  // 结果为负
+            if (Vx < -MAX_BACKWARD_SPEED) {
+                Vx = -MAX_BACKWARD_SPEED;
+            }
+        }
+    }
+    
+    // ② 左右转向控制（基于水平误差）
+    if (abs(error_x) < BALL_DEADZONE_X) {
         Vz = 0;
     }
-
+    else {
+        Vz = -K_turn * error_x;  // 负号：当球在右侧（error_x正）时，产生负转向信号，车头向左
+    }
+    if (Vz > TURN_SPEED)  Vz = TURN_SPEED;
+    if (Vz < -TURN_SPEED) Vz = -TURN_SPEED;
+    
+    // 当球既在水平中心且距离在容差范围内时，停止运动 320 10左右  1.1 0.7
+//    if ((abs(error_x) < BALL_DEADZONE_X) && (fabsf(error_distance) < DIST_DEADZONE)) {
+//        Vx = 0;
+//        Vz = 0;
+//        Stop_Motor_With_Kinematics();
+//        //return;
+//    }
+    
+    // 输出目标速度给运动学逆解函数
     Get_Target_Encoder(Vx, Vz);
-
 }
+
+
 /**************************************************************************
 Function: Bluetooth_Control
 Input   : none
