@@ -93,6 +93,7 @@ int TIMING_TIM_IRQHandler(void)
                 break;
             case Lidar_Avoid_Mode:
                 switch(current_mode2) {
+                  
                     case LIDAR_AVOID:
                         if(ball_detected) {
                             current_mode2 = BALL_TRACKING;
@@ -111,7 +112,7 @@ int TIMING_TIM_IRQHandler(void)
                         } else {
                             Track_Ball();
                             // 检查是否达到停止条件
-                            if((abs(ball_x - BALL_CENTER_X) < BALL_DEADZONE) && (fabsf(ball_distance - TARGET_DISTANCE) < DIST_DEADZONE)) {
+                            if((abs(ball_x - BALL_CENTER_X) < BALL_DEADZONE) && (abs(ball_distance - TARGET_DISTANCE) < DIST_DEADZONE)) {
                                 Stop_Motor_With_Kinematics();
                                 //return 0;
                             }
@@ -166,21 +167,23 @@ int TIMING_TIM_IRQHandler(void)
 
 
 void Track_Ball(void) {
+  
     // 1. 补码转换：确保 ball_angle 为带符号数
     if (ball_angle > 32767) {
         ball_angle = ball_angle - 65536;
+
     }
     
     // 2. 将 ball_distance 从毫米转换为米（假设 ball_distance > 10 有效）
-    if (ball_distance > 10) {
-        ball_distance = ball_distance / 1000.0f;
-    }
-    
+//    if (ball_distance > 10) {
+//        ball_distance = ball_distance / 1000.0f;
+//    }
+//    
 
     // 假设水平中心为 BALL_CENTER_X（320），水平容差设为 BALL_DEADZONE_X（20像素）
     
     // 定义控制增益
-    const float K_distance = 0.5f;  // 前后控制增益
+    const float K_distance = 0.0005f;  // 前后控制增益
     const float K_turn = 0.005f;    // 左右转向控制增益
     
     // 定义速度上限
@@ -191,16 +194,17 @@ void Track_Ball(void) {
     
     // 计算误差：水平误差与距离误差
     int error_x = ball_x - BALL_CENTER_X;  //320
-    float error_distance = ball_distance - TARGET_DISTANCE; //0.7
+    float error_distance = ball_distance - TARGET_DISTANCE; //900 350
     
     // ① 前后运动控制（基于距离误差） 1.1 0.7  0.08
-    if (fabsf(error_distance) < DIST_DEADZONE) {
+    if (fabsf(error_distance) < DIST_DEADZONE && error_distance>0 ) {
         // 当距离在容差范围内，认为达到目标，不运动
         Vx = 0;
     }
-    else if (error_distance > 0) {  
+    else if (error_distance> DIST_DEADZONE){  
         // 球太远，前进
         Vx = K_distance * error_distance;
+
         if (Vx > MAX_FORWARD_SPEED) {
             Vx = MAX_FORWARD_SPEED;
         }
@@ -208,12 +212,12 @@ void Track_Ball(void) {
     else {  
         // 球太近，后退
         // 加入一个负误差死区：如果误差大于 -0.05m，则不后退
-        if (error_distance > -0.05f) {
+        if (error_distance > -DIST_DEADZONE) {
             Vx = 0;
         } else {
             Vx = K_distance * error_distance;  // 结果为负
             if (Vx < -MAX_BACKWARD_SPEED) {
-                Vx = -MAX_BACKWARD_SPEED;
+                Vx = MAX_BACKWARD_SPEED;
             }
         }
     }
@@ -223,7 +227,7 @@ void Track_Ball(void) {
         Vz = 0;
     }
     else {
-        Vz = -K_turn * error_x;  // 负号：当球在右侧（error_x正）时，产生负转向信号，车头向左
+        Vz = -K_turn * ball_angle;  // 负号：当球在右侧（error_x正）时，产生负转向信号，车头向左
     }
     if (Vz > TURN_SPEED)  Vz = TURN_SPEED;
     if (Vz < -TURN_SPEED) Vz = -TURN_SPEED;

@@ -67,16 +67,24 @@ int main(void)
 //          USART_Send('\n');  // 添加换行符
 //      }
 //    }
+    uint8_t processing_buf[RX_BUF_SIZE];
+    
    while(1)
 	{
+//      if (data_ready) {
+//            memcpy(processing_buf, rx_buf, RX_BUF_SIZE);
+//            data_ready = 0;
+//            parse_received_data(processing_buf);
+//        }
+//      USART_SendString((const char*)rx_buf);  // 发送接收到的数据
+//    if (data_ready) {  // 如果数据已接收
+//          data_ready = 0;  // 重置标志位
+//          USART_SendString((const char*)rx_buf);  // 发送接收到的数据
+//          USART_Send('\n');  // 添加换行符
+//      }
+//    
+      ProcessReceivedData();
     
-    if (data_ready) {  // 如果数据已接收
-          data_ready = 0;  // 重置标志位
-          USART_SendString((const char*)rx_buf);  // 发送接收到的数据
-          USART_Send('\n');  // 添加换行符
-      }
-    
-      
 		Robot_Select();
 		if(Flag_Show)											//正常显示，非上位机模式
 		{

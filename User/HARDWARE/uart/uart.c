@@ -4,6 +4,49 @@ uint8_t rx_buf[RX_BUF_SIZE];  // 定义接收缓冲区
 uint8_t rx_index = 0;         // 初始化缓冲区索引
 uint8_t data_ready = 0;       // 初始化数据准备标志
 
+#define RING_BUFFER_SIZE 256  // 根据需要调整缓冲区大小
+
+typedef union {
+    float f;
+    uint8_t bytes[4];
+} FloatUnion;
+
+typedef struct {
+    uint8_t buffer[RING_BUFFER_SIZE];
+    volatile uint16_t head;
+    volatile uint16_t tail;
+} RingBuffer;
+
+void RingBuffer_Init(RingBuffer *rb) {
+    rb->head = 0;
+    rb->tail = 0;
+}
+
+int RingBuffer_Write(RingBuffer *rb, uint8_t data) {
+    uint16_t next = (rb->head + 1) % RING_BUFFER_SIZE;
+    if (next == rb->tail) {
+        // 缓冲区已满，无法写入
+        return -1;
+    }
+    rb->buffer[rb->head] = data;
+    rb->head = next;
+    return 0;
+}
+
+int RingBuffer_Read(RingBuffer *rb, uint8_t *data) {
+    if (rb->head == rb->tail) {
+        // 缓冲区为空，无法读取
+        return -1;
+    }
+    *data = rb->buffer[rb->tail];
+    rb->tail = (rb->tail + 1) % RING_BUFFER_SIZE;
+    return 0;
+}
+RingBuffer rxRingBuffer;
+
+
+
+
 void UART_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStructure;
@@ -50,6 +93,9 @@ void UART_Init(void)
 
     // 使能串口
     USART_Cmd(OPENMV_USARTx, ENABLE);    
+    
+        // 初始化环形缓冲区
+    RingBuffer_Init(&rxRingBuffer);
 }
 
 // 修改为发送 8 位校验和的文本（转换为 2 位十六进制字符串）
@@ -67,6 +113,15 @@ void USART_Send(uint8_t data)
     USART_SendData(OPENMV_USARTx, data);
 }
 
+
+void USART_Send_Float(float value) {
+    FloatUnion u;
+    u.f = value;
+    for (int i = 0; i < 4; i++) {
+        USART_Send(u.bytes[i]);
+    }
+}
+
 void USART_SendString(const char* str)
 {
     while (*str) {
@@ -75,79 +130,91 @@ void USART_SendString(const char* str)
     }
 }
 
+static uint16_t ack_counter = 0;  // ACK 发送计数器
 void parse_received_data(uint8_t* data) {
+  
     uint8_t parsed_ball_detected;
-    int16_t x, y, distance, angle;
-
-    if (sscanf((char*)data, "$%hhu,%hd,%hd,%hd,%hd", 
-               &parsed_ball_detected, &x, &y, &distance, &angle) != 5) {
+    int16_t x, y, dist, angle;
+  
+  //检验distance error正负值
+//    float ball_distance1=ball_distance /1000.0f;
+//    float error_distance = ball_distance1 - TARGET_DISTANCE; //0.9 0.35
+  
+  //这个是更新函数
+    if (sscanf((char*)data, "$%hhd,%hd,%hd,%hd,%hd", 
+               &parsed_ball_detected, &x, &y, &dist, &angle) != 5) {
         USART_SendString("ERR:FMT\n");
         return;
     }
 
-    if (x < 0 || x > 640 || y < 0 || y > 480 || distance < 0) {
-        USART_SendString("ERR:RANGE\n");
-        return;
-    }
+//    // 合法性检查
+//    if (x < 0 || x > 640 || y < 0 || y > 480 || dist < 0) {
+//        USART_SendString("ERR:RANGE\n");
+//        return;
+//    }
 
-    // 如果所有数据均为0，则不发送数据
-    if (parsed_ball_detected == 0 && x == 0 && y == 0 && distance == 0 && angle == 0) {
-        return;
+    // 如果所有数据均为0，则不处理
+    if (parsed_ball_detected == 0 && x == 0 && y == 0 && dist == 0 && angle == 0) {
+           // 也可以发送一个 "NO BALL\n" 之类的提示
+          USART_SendString("NO BALL\n");
+          return;
     }
 
     // 更新全局变量
     ball_detected = parsed_ball_detected;
     ball_x = x;
     ball_y = y;
-    ball_distance = distance;
+    ball_distance = dist;
     ball_angle = angle;
-
     // 发送 ACK 回复
-    USART_SendString("ACK\n");
+    //USART_SendString("ACK\n");
+//    char error_distance_str[20];
+//    snprintf(error_distance_str, sizeof(error_distance_str), "%.2f", error_distance);
+
+    // 发送更新后的数据
+    char response[100];
+    int len = snprintf(response, sizeof(response), "$%hhd,%hd,%hd,%hd,%hd\n",
+                       ball_detected, ball_x, ball_y, ball_distance, ball_angle);
+    if (len > 0) {
+        USART_SendString(response);  // 发送返回的数据
+      
+//        USART_SendString(error_distance_str);
+    } else {
+        USART_SendString("ERR:RESP\n");  // 发送错误信息
+    }
+}
+
+void ProcessReceivedData(void) {
+    static uint8_t rx_buf[RX_BUF_SIZE];
+    static uint16_t rx_index = 0;
+    uint8_t ch;
+
+    while (RingBuffer_Read(&rxRingBuffer, &ch) == 0) {
+        if (ch == '$') {
+            rx_index = 0;
+        }
+
+        if (rx_index < RX_BUF_SIZE - 1) {
+            rx_buf[rx_index++] = ch;
+            if (ch == '\n') {
+                rx_buf[rx_index] = '\0';
+                
+                parse_received_data(rx_buf);
+                rx_index = 0;
+            }
+        } else {
+            // 缓冲区溢出，重置索引
+            rx_index = 0;
+        }
+    }
 }
 
 // UART中断处理函数
 void OPENMV_USART_IRQHandler(void) {
     if (USART_GetITStatus(OPENMV_USARTx, USART_IT_RXNE) != RESET) {
         uint8_t ch = USART_ReceiveData(OPENMV_USARTx);
-        
-        // 帧起始检测
-        if (ch == '$' && rx_index == 0) {
-            rx_index = 0;
-            rx_buf[rx_index++] = ch;
-        }
-        // 数据积累
-        else if (rx_index > 0 && rx_index < RX_BUF_SIZE - 1) {
-            rx_buf[rx_index++] = ch;
-            if (ch == '\n') {  // 检测到帧结束符
-                rx_buf[rx_index] = '\0';
-                int16_t parsed_type, x, y, dist, angle;
-                if (sscanf((char*)rx_buf, "$%hd,%hd,%hd,%hd,%hd", 
-                           &parsed_type, &x, &y, &dist, &angle) == 5) {
-                    // 若所有数据均为0，则不发送回复
-                    if (!(parsed_type == 0 && x == 0 && y == 0 && dist == 0 && angle == 0)) {
-                        ball_detected = parsed_type;
-                        ball_x = x;
-                        ball_y = y;
-                        ball_distance = dist;
-                        ball_angle = angle;
-//                        USART_SendString((char*)rx_buf);
-      
-                          // 更新检测计数器
-//                        if(ball_distance > 0) {
-//                            if(ball_detected_counter < DETECTION_THRESHOLD*2)
-//                                ball_detected_counter++;
-//                        } else {
-//                            if(ball_detected_counter > 0)
-//                                ball_detected_counter--;
-//                        }
-                        USART_SendString("ACK\n");
-                    }
-                }
-                rx_index = 0;
-            }
-        }
-        
+        RingBuffer_Write(&rxRingBuffer, ch);
         USART_ClearITPendingBit(OPENMV_USARTx, USART_IT_RXNE);
     }
 }
+
