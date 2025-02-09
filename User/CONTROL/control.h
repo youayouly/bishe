@@ -39,16 +39,16 @@ extern uint8_t ball_detected_counter;
 #define BALL_TIMEOUT 200 // 200*5ms=1秒超时
 //-----------在control.h中添加宏定义-----------
 #define BALL_CENTER_X        320     // 图像中心X坐标
-#define BALL_DEADZONE_X      30      // 转向死区
+#define BALL_DEADZONE_X      80      // 转向死区
 #define STOP_DISTANCE        0.6f    // 停止距离(米)  //实际不是距离，而是视频的距离
-#define TURN_SPEED           0.15f    // 转向速度
+#define TURN_SPEED           0.3f    // 转向速度
 #define FORWARD_SPEED        0.25f    // 前进速度
 
 
 
 // 比例控制参数
 #define KP 0.005f       // 转向比例系数
-#define TARGET_DISTANCE    320  // 目标跟踪距离 (ms)
+#define TARGET_DISTANCE    350  // 目标跟踪距离 (ms)
 
 #define BALL_CENTER_Y      240
 #define BALL_DEADZONE      40
@@ -67,6 +67,9 @@ extern uint8_t ball_detected_counter;
 #define D_WEIGHT             0.2f    // 微分项权重
 #define FILTER_FACTOR        0.3f    // 低通滤波系数
 
+
+extern float prev_error_distance;
+extern float integral_distance;
 
 //PWM限制最大最小值
 #define PWM_MAX  6900
@@ -213,5 +216,5 @@ void Get_Angle(u8 way);
 
 
 void Track_Ball(void);//追球
-
+float FilterDistance(float new_distance);//滤波函数
 #endif

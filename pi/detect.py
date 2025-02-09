@@ -4,7 +4,7 @@ import time
 import math
 
 class BallDetector:
-    def __init__(self, show_display=False, focal_length=650, real_diameter=0.067):
+    def __init__(self, show_display=False, focal_length=554.26, real_diameter=0.04):
         # 相机初始化
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -151,8 +151,9 @@ class BallDetector:
         # 显示数值
         cv2.putText(frame, f"Dist: {distance:.2f}m", (10, 30), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-        cv2.putText(frame, f"Angle: {angle:.1f}°", (10, 70), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        cv2.putText(frame, f"Angle: {angle:.1f} deg", (10, 70), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+
 
     def update_settings_from_trackbars(self):
         """从轨迹栏更新参数"""

@@ -132,33 +132,41 @@ void USART_SendString(const char* str)
 
 static uint16_t ack_counter = 0;  // ACK 发送计数器
 void parse_received_data(uint8_t* data) {
-  
     uint8_t parsed_ball_detected;
     int16_t x, y, dist, angle;
-  
-  //检验distance error正负值
-//    float ball_distance1=ball_distance /1000.0f;
-//    float error_distance = ball_distance1 - TARGET_DISTANCE; //0.9 0.35
-  
-  //这个是更新函数
-    if (sscanf((char*)data, "$%hhd,%hd,%hd,%hd,%hd", 
+
+    // 解析数据
+    if (sscanf((char*)data, "$%hhu,%hd,%hd,%hd,%hd", 
                &parsed_ball_detected, &x, &y, &dist, &angle) != 5) {
         USART_SendString("ERR:FMT\n");
         return;
     }
 
-//    // 合法性检查
-//    if (x < 0 || x > 640 || y < 0 || y > 480 || dist < 0) {
-//        USART_SendString("ERR:RANGE\n");
-//        return;
-//    }
-
     // 如果所有数据均为0，则不处理
     if (parsed_ball_detected == 0 && x == 0 && y == 0 && dist == 0 && angle == 0) {
-           // 也可以发送一个 "NO BALL\n" 之类的提示
-          USART_SendString("NO BALL\n");
-          return;
+        USART_SendString("NO BALL\n");
+        return;
     }
+
+    // 定义差分阈值
+    const int16_t DIST_DIFF_THRESHOLD = 300; // 根据实际情况设置阈值
+    const int16_t ANGLE_DIFF_THRESHOLD = 300; // 根据实际情况设置阈值
+
+    // 检查距离和角度的差分是否超过阈值
+//    if (abs(dist - ball_distance) > DIST_DIFF_THRESHOLD || 
+//        abs(angle - ball_angle) > ANGLE_DIFF_THRESHOLD) 
+//    {
+//        USART_SendString("ERR:SPIKE\n");
+//        return; // 忽略异常数据
+//    }
+
+        // 多级滤波
+//    float temp_dist = median_filter(dist);          // 中值滤波
+//    temp_dist=Mean_Filter_Left(temp_dist);          //滑动滤波
+//    temp_dist = dynamic_spike_filter(temp_dist);    // 动态阈值滤波
+    
+//    float temp_angle = median_filter(angle);  // 对距离进行中值滤波
+//    temp_dist = dynamic_spike_filter(temp_angle);  // 对中值滤波后的结果进行动态阈值检测
 
     // 更新全局变量
     ball_detected = parsed_ball_detected;
@@ -166,23 +174,18 @@ void parse_received_data(uint8_t* data) {
     ball_y = y;
     ball_distance = dist;
     ball_angle = angle;
-    // 发送 ACK 回复
-    //USART_SendString("ACK\n");
-//    char error_distance_str[20];
-//    snprintf(error_distance_str, sizeof(error_distance_str), "%.2f", error_distance);
 
     // 发送更新后的数据
     char response[100];
     int len = snprintf(response, sizeof(response), "$%hhd,%hd,%hd,%hd,%hd\n",
                        ball_detected, ball_x, ball_y, ball_distance, ball_angle);
     if (len > 0) {
-        USART_SendString(response);  // 发送返回的数据
-      
-//        USART_SendString(error_distance_str);
+        USART_SendString(response);
     } else {
-        USART_SendString("ERR:RESP\n");  // 发送错误信息
+        USART_SendString("ERR:RESP\n");
     }
 }
+
 
 void ProcessReceivedData(void) {
     static uint8_t rx_buf[RX_BUF_SIZE];
@@ -217,4 +220,68 @@ void OPENMV_USART_IRQHandler(void) {
         USART_ClearITPendingBit(OPENMV_USARTx, USART_IT_RXNE);
     }
 }
+
+// 中值滤波实现
+#define MEDIAN_FILTER_SIZE 5
+
+// 中值滤波函数，返回滤波后的值
+float median_filter(float new_val) {
+    static float buffer[MEDIAN_FILTER_SIZE] = {0};  // 存储最近的几个值
+    static uint8_t index = 0;  // 缓冲区的索引
+    
+    // 更新缓冲区，循环覆盖
+    buffer[index] = new_val;
+    index = (index + 1) % MEDIAN_FILTER_SIZE;
+    
+    // 对缓冲区的值进行排序，找到中值
+    float sorted[MEDIAN_FILTER_SIZE];
+    memcpy(sorted, buffer, sizeof(sorted));
+    for(int i = 0; i < MEDIAN_FILTER_SIZE - 1; i++) {
+        for(int j = i + 1; j < MEDIAN_FILTER_SIZE; j++) {
+            if(sorted[i] > sorted[j]) {
+                float temp = sorted[i];
+                sorted[i] = sorted[j];
+                sorted[j] = temp;
+            }
+        }
+    }
+    
+    // 返回中值
+    return sorted[MEDIAN_FILTER_SIZE / 2];
+}
+
+
+#define SPIKE_WINDOW 10  // 动态阈值窗口大小
+
+// 动态阈值检测函数
+float dynamic_spike_filter(float new_val) {
+    static float history[SPIKE_WINDOW] = {0};  // 存储最近的几个值
+    static uint8_t idx = 0;  // 当前值的索引
+    static float sum = 0, sq_sum = 0;  // 求和与平方和
+    
+    // 移除历史数据中的最旧值
+    sum -= history[idx];
+    sq_sum -= history[idx] * history[idx];
+    
+    // 添加新的值到历史数据
+    history[idx] = new_val;
+    sum += new_val;
+    sq_sum += new_val * new_val;
+    
+    // 更新索引，保持窗口大小
+    idx = (idx + 1) % SPIKE_WINDOW;
+    
+    // 计算当前数据的均值和标准差
+    float mean = sum / SPIKE_WINDOW;
+    float variance = (sq_sum - sum * mean) / SPIKE_WINDOW;
+    float std_dev = sqrtf(variance);  // 标准差
+    
+    // 计算动态阈值，使用3倍标准差（3σ原则）
+    float threshold = 3 * std_dev;
+    
+    // 如果当前值与均值的差距超过阈值，则认为是异常值
+    return (fabs(new_val - mean) > threshold) ? mean : new_val;
+}
+
+
 

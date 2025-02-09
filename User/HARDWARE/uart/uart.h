@@ -21,6 +21,10 @@ void process_ring_buffer_frame(void);
   void ProcessReceivedData(void);
 void USART_Send_Float(float value);
 
+float dynamic_spike_filter(float new_val);
+float median_filter(float new_val);
+
+
 #define RX_BUF_SIZE 64
 
 

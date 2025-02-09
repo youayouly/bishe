@@ -99,7 +99,7 @@ int TIMING_TIM_IRQHandler(void)
                             current_mode2 = BALL_TRACKING;
                             // 更新ball_last_tick，当球数据有效时
                             ball_last_tick = sys_tick;
-                            Stop_Motor_With_Kinematics();
+                            //Stop_Motor_With_Kinematics();
                         } else {
                             Lidar_Avoid();
                             Get_Target_Encoder(Move_X, Move_Z);
@@ -165,6 +165,39 @@ int TIMING_TIM_IRQHandler(void)
 	return 0;
 }
 
+// 全局变量
+float prev_error_distance = 0.0f;
+float integral_distance = 0.0f;
+
+//均值滤波 放置车前后波动
+#define FILTER_SIZE 5
+float distance_buffer[FILTER_SIZE] = {0};
+int buffer_index = 0;
+
+float FilterDistance(float new_distance) {
+    distance_buffer[buffer_index] = new_distance;
+    buffer_index = (buffer_index + 1) % FILTER_SIZE;
+
+    float sum = 0;
+    for (int i = 0; i < FILTER_SIZE; i++) {
+        sum += distance_buffer[i];
+    }
+    return sum / FILTER_SIZE;
+}
+
+//差分阈值
+float previous_distance = 0.0f;
+float threshold = 300.0f; // 根据实际情况设置阈值
+
+float filter_spike(float new_distance) {
+    if (fabs(new_distance - previous_distance) > threshold) {
+        // 突变值，忽略
+        return previous_distance;
+    } else {
+        previous_distance = new_distance;
+        return new_distance;
+    }
+}
 
 void Track_Ball(void) {
   
@@ -182,19 +215,44 @@ void Track_Ball(void) {
 
     // 假设水平中心为 BALL_CENTER_X（320），水平容差设为 BALL_DEADZONE_X（20像素）
     
-    // 定义控制增益
-    const float K_distance = 0.0005f;  // 前后控制增益
-    const float K_turn = 0.005f;    // 左右转向控制增益
-    
+        // 前后控制和转向控制增益 300-1200 
+    const float K_distance = 0.0004f;  // 稍微降低前后增益，有助于靠近时平稳减速
+    const float K_turn = 0.004f;       // 略微降低转向增益，防止转向过于激进
+
+    // PID参数
+    const float Kp = 0.0005f;    // 增加比例增益，增强响应性，但需注意可能引起的过冲
+    const float Ki = 0.0001f;    // 积分增益保持较低，防止积分累积过快
+    const float Kd = 0.001f;     // 增加微分增益，改善接近目标时的震荡控制
+    const float dt = 0.1f;       // 控制周期不变
+        
     // 定义速度上限
     const float MAX_FORWARD_SPEED = FORWARD_SPEED;   // 0.15 m/s
     const float MAX_BACKWARD_SPEED = 0.10f;            // 限制后退速度（0.10 m/s）
     
-    float Vx = 0, Vz = 0;
+    float Vz=0;
     
     // 计算误差：水平误差与距离误差
     int error_x = ball_x - BALL_CENTER_X;  //320
     float error_distance = ball_distance - TARGET_DISTANCE; //900 350
+    
+    
+    // 积分项（带抗饱和）
+    integral_distance += error_distance * dt;
+    if (fabs(error_distance) > 0.5f * TARGET_DISTANCE) {
+        integral_distance = 0.0f;  // 误差过大时复位积分
+    }
+
+    // 微分项
+    float derivative = (error_distance - prev_error_distance) / dt;
+    prev_error_distance = error_distance;
+
+    // 计算速度
+    float Vx = Kp * error_distance + Ki * integral_distance + Kd * derivative;
+
+    // 限幅处理
+    Vx = fminf(FORWARD_SPEED, fmaxf(-MAX_BACKWARD_SPEED, Vx));
+
+    
     
     // ① 前后运动控制（基于距离误差） 1.1 0.7  0.08
     if (fabsf(error_distance) < DIST_DEADZONE && error_distance>0 ) {
