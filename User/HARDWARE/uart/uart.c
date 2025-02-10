@@ -153,16 +153,22 @@ void parse_received_data(uint8_t* data) {
     const int16_t ANGLE_DIFF_THRESHOLD = 300; // 根据实际情况设置阈值
 
     // 检查距离和角度的差分是否超过阈值
-//    if (abs(dist - ball_distance) > DIST_DIFF_THRESHOLD || 
-//        abs(angle - ball_angle) > ANGLE_DIFF_THRESHOLD) 
-//    {
-//        USART_SendString("ERR:SPIKE\n");
-//        return; // 忽略异常数据
-//    }
+          
+      // 如果上一次数据为0（无有效检测），则直接更新，不做差分判断
+//      if (ball_distance == 0 && ball_angle == 0) {
+//          ball_distance = dist;
+//          ball_angle = angle;
+//      } else if (abs(dist - ball_distance) > DIST_DIFF_THRESHOLD ||
+//                 abs(angle - ball_angle) > ANGLE_DIFF_THRESHOLD) 
+//      {
+//          USART_SendString("ERR:SPIKE\n");
+//          return; // 忽略异常数据
+//      }
+
 
         // 多级滤波
-//    float temp_dist = median_filter(dist);          // 中值滤波
-//    temp_dist=Mean_Filter_Left(temp_dist);          //滑动滤波
+    //float temp_dist = median_filter(dist);          // 中值滤波
+    //temp_dist=Mean_Filter_Left(temp_dist);          //滑动滤波
 //    temp_dist = dynamic_spike_filter(temp_dist);    // 动态阈值滤波
     
 //    float temp_angle = median_filter(angle);  // 对距离进行中值滤波
