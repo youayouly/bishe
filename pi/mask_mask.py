@@ -4,7 +4,7 @@ import time
 import math
 
 class BallDetector:
-    def __init__(self, show_display=False, focal_length=554.26, real_diameter=0.04, smoothing_window=5, calibration_file='/usr/src/ai/calibration/valid/calibration.xml'):
+    def __init__(self, show_display=False, focal_length=554.26, real_diameter=0.04, smoothing_window=5, calibration_file='./calibration.xml'):
         # 相机初始化
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -191,13 +191,23 @@ class BallDetector:
             if self.show_display:
                 self.update_settings_from_trackbars()
             status, x, y, distance, angle, processed_frame = self.detect_balls(frame)
+
+            # 在终端实时打印检测到的数据
+            if status:
+                print(f"位置: ({x}, {y}), 距离: {distance:.2f}米, 角度: {angle:.1f}度")
+
             cv2.imshow("Frame", processed_frame)
-            # 可在此处添加数据传输到STM32的逻辑
+
+            # 如果需要，将数据发送到STM32的逻辑可以在此添加
+
+            # 按下'q'键退出循环
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
             time.sleep(0.1)
+        
         self.cap.release()
         cv2.destroyAllWindows()
+
 
     def detect_balls(self, frame):
         """球体检测主流程"""

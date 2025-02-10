@@ -155,24 +155,24 @@ void parse_received_data(uint8_t* data) {
     // 检查距离和角度的差分是否超过阈值
           
       // 如果上一次数据为0（无有效检测），则直接更新，不做差分判断
-//      if (ball_distance == 0 && ball_angle == 0) {
-//          ball_distance = dist;
-//          ball_angle = angle;
-//      } else if (abs(dist - ball_distance) > DIST_DIFF_THRESHOLD ||
-//                 abs(angle - ball_angle) > ANGLE_DIFF_THRESHOLD) 
-//      {
-//          USART_SendString("ERR:SPIKE\n");
-//          return; // 忽略异常数据
-//      }
+      if (ball_distance == 0 && ball_angle == 0) {
+          ball_distance = dist;
+          ball_angle = angle;
+      } else if (abs(dist - ball_distance) > DIST_DIFF_THRESHOLD ||
+                 abs(angle - ball_angle) > ANGLE_DIFF_THRESHOLD) 
+      {
+          USART_SendString("ERR:SPIKE\n");
+          return; // 忽略异常数据
+      }
 
 
         // 多级滤波
-    //float temp_dist = median_filter(dist);          // 中值滤波
-    //temp_dist=Mean_Filter_Left(temp_dist);          //滑动滤波
-//    temp_dist = dynamic_spike_filter(temp_dist);    // 动态阈值滤波
-    
-//    float temp_angle = median_filter(angle);  // 对距离进行中值滤波
-//    temp_dist = dynamic_spike_filter(temp_angle);  // 对中值滤波后的结果进行动态阈值检测
+//      float temp_dist = median_filter(dist);          // 中值滤波
+//      //temp_dist=Mean_Filter_Left(temp_dist);          //滑动滤波
+//      temp_dist = dynamic_spike_filter(temp_dist);    // 动态阈值滤波
+//    
+//      float temp_angle = median_filter(angle);  // 对距离进行中值滤波
+//      temp_dist = dynamic_spike_filter(temp_angle);  // 对中值滤波后的结果进行动态阈值检测
 
     // 更新全局变量
     ball_detected = parsed_ball_detected;
@@ -228,7 +228,7 @@ void OPENMV_USART_IRQHandler(void) {
 }
 
 // 中值滤波实现
-#define MEDIAN_FILTER_SIZE 5
+#define MEDIAN_FILTER_SIZE 7
 
 // 中值滤波函数，返回滤波后的值
 float median_filter(float new_val) {
@@ -257,13 +257,24 @@ float median_filter(float new_val) {
 }
 
 
-#define SPIKE_WINDOW 10  // 动态阈值窗口大小
+#define SPIKE_WINDOW 15  // 动态阈值窗口大小
 
 // 动态阈值检测函数
 float dynamic_spike_filter(float new_val) {
-    static float history[SPIKE_WINDOW] = {0};  // 存储最近的几个值
-    static uint8_t idx = 0;  // 当前值的索引
-    static float sum = 0, sq_sum = 0;  // 求和与平方和
+  
+    static float history[SPIKE_WINDOW] = {0};
+    static uint8_t init_count = 0;
+    static uint8_t idx = 0;
+    static float sum = 0, sq_sum = 0;
+    
+    // 初始化阶段填充窗口
+    if (init_count < SPIKE_WINDOW) {
+        history[init_count++] = new_val;
+        sum += new_val;
+        sq_sum += new_val * new_val;
+        return new_val; // 未满窗口时不滤波
+    }
+
     
     // 移除历史数据中的最旧值
     sum -= history[idx];
