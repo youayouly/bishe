@@ -1,0 +1,30 @@
+[DEFAULT]
+focal_length = 554.26
+real_diameter = 0.04
+smoothing_window = 5
+calibration_file = /usr/src/ai/calibration/valid/calibration.xml
+
+show_display = False
+record_video = True
+
+orange_lower_h = 5
+orange_upper_h = 18
+
+orange_lower_s = 114
+orange_upper_s = 159
+
+orange_lower_v = 100
+orange_upper_v = 255
+
+
+white_lower = 200
+white_upper = 255
+white_blur = 5
+orange_iter_open = 2
+orange_iter_close = 3
+white_iter_open = 3
+white_iter_close = 5
+min_radius = 10
+max_radius = 100
+min_circularity = 0.65
+glare_thresh = 234

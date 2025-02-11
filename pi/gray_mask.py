@@ -2,10 +2,14 @@ import cv2
 import numpy as np
 import time
 import math
+import configparser
 
 class BallDetector:
-    def __init__(self, show_display=False, record_video=False, focal_length=554.26, real_diameter=0.04, 
-                 smoothing_window=5, calibration_file='/usr/src/ai/calibration/valid/calibration.xml'):
+    def __init__(self, show_display=False, record_video=False, focal_length=554.26, real_diameter=0.04, config_file='/usr/src/ai/config.txt'):
+        # 读取配置文件
+        config = configparser.ConfigParser()
+        config.read(config_file)
+        
         # 相机初始化
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -22,33 +26,37 @@ class BallDetector:
         self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
         
         # 橙色HSV阈值
-        self.orange_lower = np.array([0, 100, 100])
-        self.orange_upper = np.array([22, 255, 255])
+        self.orange_lower = np.array([config.getint('DEFAULT', 'orange_lower_h'),
+                                      config.getint('DEFAULT', 'orange_lower_s'),
+                                      config.getint('DEFAULT', 'orange_lower_v')])
+        self.orange_upper = np.array([config.getint('DEFAULT', 'orange_upper_h'),
+                                      config.getint('DEFAULT', 'orange_upper_s'),
+                                      config.getint('DEFAULT', 'orange_upper_v')])
         
         # 白色灰度参数
-        self.white_lower = 200   # 亮度下限
-        self.white_upper = 255   # 亮度上限
-        self.white_blur = 5      # 高斯模糊核大小
+        self.white_lower = config.getint('DEFAULT', 'white_lower')
+        self.white_upper = config.getint('DEFAULT', 'white_upper')
+        self.white_blur = config.getint('DEFAULT', 'white_blur')
         
         # 形态学参数
-        self.orange_iter_open = 2
-        self.orange_iter_close = 3
-        self.white_iter_open = 3
-        self.white_iter_close = 5
+        self.orange_iter_open = config.getint('DEFAULT', 'orange_iter_open')
+        self.orange_iter_close = config.getint('DEFAULT', 'orange_iter_close')
+        self.white_iter_open = config.getint('DEFAULT', 'white_iter_open')
+        self.white_iter_close = config.getint('DEFAULT', 'white_iter_close')
         
         # 几何参数
-        self.min_radius = 10
-        self.max_radius = 100
-        self.min_circularity = 0.65
+        self.min_radius = config.getint('DEFAULT', 'min_radius')
+        self.max_radius = config.getint('DEFAULT', 'max_radius')
+        self.min_circularity = config.getfloat('DEFAULT', 'min_circularity')
         
         # 反光抑制阈值
-        self.glare_thresh = 234
+        self.glare_thresh = config.getint('DEFAULT', 'glare_thresh')
         
         # 标定参数加载
-        self._load_calibration(calibration_file)
+        self._load_calibration(config.get('DEFAULT', 'calibration_file'))
         
         # 滤波参数
-        self.smoothing_window = smoothing_window
+        self.smoothing_window = config.getint('DEFAULT', 'smoothing_window')
         self.x_history = []
         self.y_history = []
         
@@ -89,27 +97,27 @@ class BallDetector:
         cv2.resizeWindow("Settings", 800, 600)
         
         # 橙色小球参数
-        cv2.createTrackbar("Orange H1", "Settings", 0, 179, lambda x: x)
-        cv2.createTrackbar("Orange H2", "Settings", 22, 179, lambda x: x)
-        cv2.createTrackbar("Orange S1", "Settings", 100, 255, lambda x: x)
-        cv2.createTrackbar("Orange S2", "Settings", 255, 255, lambda x: x)
-        cv2.createTrackbar("Orange V1", "Settings", 100, 255, lambda x: x)
-        cv2.createTrackbar("Orange V2", "Settings", 255, 255, lambda x: x)
-        cv2.createTrackbar("O_Open", "Settings", 2, 5, lambda x: x)
-        cv2.createTrackbar("O_Close", "Settings", 3, 5, lambda x: x)
+        cv2.createTrackbar("Orange H1", "Settings", self.orange_lower[0], 179, lambda x: x)
+        cv2.createTrackbar("Orange H2", "Settings", self.orange_upper[0], 179, lambda x: x)
+        cv2.createTrackbar("Orange S1", "Settings", self.orange_lower[1], 255, lambda x: x)
+        cv2.createTrackbar("Orange S2", "Settings", self.orange_upper[1], 255, lambda x: x)
+        cv2.createTrackbar("Orange V1", "Settings", self.orange_lower[2], 255, lambda x: x)
+        cv2.createTrackbar("Orange V2", "Settings", self.orange_upper[2], 255, lambda x: x)
+        cv2.createTrackbar("O_Open", "Settings", self.orange_iter_open, 5, lambda x: x)
+        cv2.createTrackbar("O_Close", "Settings", self.orange_iter_close, 5, lambda x: x)
         
         # 白色小球参数
-        cv2.createTrackbar("W_Lower", "Settings", 154, 255, lambda x: x)
-        cv2.createTrackbar("W_Upper", "Settings", 186, 255, lambda x: x)
-        cv2.createTrackbar("W_Blur", "Settings", 5, 15, lambda x: x if x%2==1 else x+1)
-        cv2.createTrackbar("W_Open", "Settings", 2, 5, lambda x: x)
-        cv2.createTrackbar("W_Close", "Settings", 5, 5, lambda x: x)
+        cv2.createTrackbar("W_Lower", "Settings", self.white_lower, 255, lambda x: x)
+        cv2.createTrackbar("W_Upper", "Settings", self.white_upper, 255, lambda x: x)
+        cv2.createTrackbar("W_Blur", "Settings", self.white_blur, 15, lambda x: x if x%2==1 else x+1)
+        cv2.createTrackbar("W_Open", "Settings", self.white_iter_open, 5, lambda x: x)
+        cv2.createTrackbar("W_Close", "Settings", self.white_iter_close, 5, lambda x: x)
         
         # 通用参数
-        cv2.createTrackbar("MinRadius", "Settings", 10, 50, lambda x: x)
-        cv2.createTrackbar("MaxRadius", "Settings", 100, 200, lambda x: x)
-        cv2.createTrackbar("Circularity", "Settings", 65, 100, lambda x: x)
-        cv2.createTrackbar("GlareThresh", "Settings", 234, 255, lambda x: x)
+        cv2.createTrackbar("MinRadius", "Settings", self.min_radius, 50, lambda x: x)
+        cv2.createTrackbar("MaxRadius", "Settings", self.max_radius, 200, lambda x: x)
+        cv2.createTrackbar("Circularity", "Settings", int(self.min_circularity * 100), 100, lambda x: x)
+        cv2.createTrackbar("GlareThresh", "Settings", self.glare_thresh, 255, lambda x: x)
 
     def update_settings(self):
         """从轨迹栏更新所有参数"""
@@ -310,5 +318,5 @@ class BallDetector:
             cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    detector = BallDetector(show_display=False, record_video=True)
+    detector = BallDetector(show_display=True, record_video=True)
     detector.detect_and_display()

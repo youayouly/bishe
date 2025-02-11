@@ -9,7 +9,7 @@ ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
 
 # 初始化检测器（请根据实际相机校准参数设置）
 detector = BallDetector(
-    show_display=False,  # 禁用显示
+    show_display=False,  # 启用显示和 trackbars
     record_video=True,  # 启用视频记录
     focal_length=550,    # 根据实际校准
     real_diameter=0.04  # 球的真实直径（单位：米）
@@ -62,7 +62,7 @@ def main():
                 continue
 
             frame_count += 1
-            # 每15帧发送一次数据，降低发送频率
+            # 每5帧发送一次数据，降低发送频率
             if frame_count % 5 == 0:
                 result = detector.detect_balls(frame)
                 # 检测函数返回6个元素：[ball_type, x, y, distance, angle, frame]
