@@ -67,10 +67,10 @@ int TIMING_TIM_IRQHandler(void)
     sys_tick++; // 每5ms自增1
         // ...原有逻辑...
     
-            // 检查是否超时未接收到球数据
+            // 检查是否超时未接收到球数据 两次识别到球之间的时间
         if ((sys_tick - ball_last_tick) > BALL_TIMEOUT) {
             // 超时了：认为球丢失，停止车辆，切换到避障模式
-            Stop_Motor_With_Kinematics();
+            //Stop_Motor_With_Kinematics();
             // 可以选择更新模式变量，比如：
             current_mode2 = LIDAR_AVOID;
         }
@@ -285,7 +285,7 @@ void Track_Ball(void) {
         Vz = 0;
     }
     else {
-        Vz = -K_turn * ball_angle;  // 负号：当球在右侧（error_x正）时，产生负转向信号，车头向左
+        Vz = -K_turn * error_x*3;  // 负号：当球在右侧（error_x正）时，产生负转向信号，车头向左
     }
     if (Vz > TURN_SPEED)  Vz = TURN_SPEED;
     if (Vz < -TURN_SPEED) Vz = -TURN_SPEED;
@@ -297,8 +297,10 @@ void Track_Ball(void) {
 //        Stop_Motor_With_Kinematics();
 //        //return;
 //    }
-    
-    // 输出目标速度给运动学逆解函数
+    //Get_Target_Encoder(Move_X, Move_Z);
+    // 输出目标速度给运动学逆解函数 这列movex和x感觉一样
+    Move_X=Vx;
+    Move_Z=Vz;
     Get_Target_Encoder(Vx, Vz);
 }
 

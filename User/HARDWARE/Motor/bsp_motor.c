@@ -74,7 +74,8 @@ Output  : none
 **************************************************************************/	 	
 void Set_Pwm(int motor_a,int motor_b)
 {
-	
+	//因为 motor_a 为负，所以 7200 + motor_a 实际上比 7200小，这种差值产生了一个方向性信号
+  
 	if(Car_Num==Akm_Car)//阿克曼车需要控制舵机
 		SERVO_TIM_SetCompareX_FUN(SERVO_TIM,Servo_PWM);
 	if(motor_a<0)		PWMA_IN1=7200,PWMA_IN2=7200+motor_a;

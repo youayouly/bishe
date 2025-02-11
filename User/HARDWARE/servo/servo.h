@@ -3,7 +3,7 @@
 
 #include "stm32f10x.h"
 #include "Header.h"
-
+extern int SERVO3_INIT;	
 
 // 舵机信号引脚使用PA3
 #define    	SERVO3_GPIO_CLK     					RCC_APB2Periph_GPIOA

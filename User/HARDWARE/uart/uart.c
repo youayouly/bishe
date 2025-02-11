@@ -141,13 +141,20 @@ void parse_received_data(uint8_t* data) {
         USART_SendString("ERR:FMT\n");
         return;
     }
+              
 
     // 如果所有数据均为0，则不处理
     if (parsed_ball_detected == 0 && x == 0 && y == 0 && dist == 0 && angle == 0) {
+        ball_detected = 0;    // 明确置0
         USART_SendString("NO BALL\n");
         return;
     }
 
+    // 检查 parsed_ball_detected 是否为 1 或 2
+    if (parsed_ball_detected != 1 && parsed_ball_detected != 2) {
+        USART_SendString("ERR:VAL\n");
+        return;
+    }
     // 定义差分阈值
     const int16_t DIST_DIFF_THRESHOLD = 300; // 根据实际情况设置阈值
     const int16_t ANGLE_DIFF_THRESHOLD = 300; // 根据实际情况设置阈值
@@ -155,15 +162,15 @@ void parse_received_data(uint8_t* data) {
     // 检查距离和角度的差分是否超过阈值
           
       // 如果上一次数据为0（无有效检测），则直接更新，不做差分判断
-      if (ball_distance == 0 && ball_angle == 0) {
-          ball_distance = dist;
-          ball_angle = angle;
-      } else if (abs(dist - ball_distance) > DIST_DIFF_THRESHOLD ||
-                 abs(angle - ball_angle) > ANGLE_DIFF_THRESHOLD) 
-      {
-          USART_SendString("ERR:SPIKE\n");
-          return; // 忽略异常数据
-      }
+//      if (ball_distance == 0 && ball_angle == 0) {
+//          ball_distance = dist;
+//          ball_angle = angle;
+//      } else if (abs(dist - ball_distance) > DIST_DIFF_THRESHOLD ||
+//                 abs(angle - ball_angle) > ANGLE_DIFF_THRESHOLD) 
+//      {
+//          USART_SendString("ERR:SPIKE\n");
+//          return; // 忽略异常数据
+//      }
 
 
         // 多级滤波
@@ -175,6 +182,14 @@ void parse_received_data(uint8_t* data) {
 //      temp_dist = dynamic_spike_filter(temp_angle);  // 对中值滤波后的结果进行动态阈值检测
 
     // 更新全局变量
+      
+    if (ball_angle > 32767) {
+        ball_angle = ball_angle - 65536;
+
+    }
+          
+//    angle = angle / 100.0f;
+    
     ball_detected = parsed_ball_detected;
     ball_x = x;
     ball_y = y;
@@ -187,6 +202,7 @@ void parse_received_data(uint8_t* data) {
                        ball_detected, ball_x, ball_y, ball_distance, ball_angle);
     if (len > 0) {
         USART_SendString(response);
+        //USART_SendString();
     } else {
         USART_SendString("ERR:RESP\n");
     }

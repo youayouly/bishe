@@ -1,4 +1,6 @@
 #include "servo.h"   
+
+int SERVO3_INIT=1800;
   /**************************************************************************
 Function: Servo_Init
 Input   : TIM_Period,TIM_Prescaler
