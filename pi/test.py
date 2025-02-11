@@ -4,7 +4,7 @@ import time
 import math
 
 class BallDetector:
-    def __init__(self, show_display=False, focal_length=554.26, real_diameter=0.04, 
+    def __init__(self, show_display=False, record_video=False, focal_length=554.26, real_diameter=0.04, 
                  smoothing_window=5, calibration_file='/usr/src/ai/calibration/valid/calibration.xml'):
         # 相机初始化
         self.cap = cv2.VideoCapture(0)
@@ -18,6 +18,7 @@ class BallDetector:
         
         # 图像处理参数
         self.show_display = show_display
+        self.record_video = record_video
         self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
         
         # 橙色HSV阈值
@@ -53,6 +54,13 @@ class BallDetector:
         
         if self.show_display:
             self._init_trackbars()
+        
+        if self.record_video:
+            self.video_writer = cv2.VideoWriter('/usr/src/ai/record/detection.avi', 
+                                                cv2.VideoWriter_fourcc(*'XVID'), 
+                                                30, (640, 480))
+        else:
+            self.video_writer = None
 
     def _load_calibration(self, calibration_file):
         """加载相机标定参数"""
@@ -94,7 +102,7 @@ class BallDetector:
         cv2.createTrackbar("W_Lower", "Settings", 154, 255, lambda x: x)
         cv2.createTrackbar("W_Upper", "Settings", 186, 255, lambda x: x)
         cv2.createTrackbar("W_Blur", "Settings", 5, 15, lambda x: x if x%2==1 else x+1)
-        cv2.createTrackbar("W_Open", "Settings", 2, 5, lambda x: x)
+        cv2.createTrackbar("W_Open", "Settings", 0, 5, lambda x: x)
         cv2.createTrackbar("W_Close", "Settings", 5, 5, lambda x: x)
         
         # 通用参数
@@ -279,6 +287,10 @@ class BallDetector:
 
             cv2.imshow("Frame", processed_frame)
 
+            # 记录视频
+            if self.record_video and self.video_writer is not None:
+                self.video_writer.write(processed_frame)
+
             # 如果需要，将数据发送到STM32的逻辑可以在此添加
 
             # 按下'q'键退出循环
@@ -287,8 +299,10 @@ class BallDetector:
             time.sleep(0.1)
         
         self.cap.release()
+        if self.video_writer is not None:
+            self.video_writer.release()
         cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    detector = BallDetector(show_display=True)
+    detector = BallDetector(show_display=False, record_video=True)
     detector.detect_and_display()

@@ -700,7 +700,7 @@ void Lidar_Avoid(void)
 	if(calculation_angle_cnt < 8)						//小于8点不需要避障，去除一些噪点
 	{
 		if((Move_X += 0.1)>=Aovid_Speed)							//避障的速度设定为260，逐渐增加到260可稍微平滑一些
-			Move_X = 0.1;
+			Move_X = 0.15;
 		Move_Z = 0;										//不避障时不需要转弯
 	}
 
