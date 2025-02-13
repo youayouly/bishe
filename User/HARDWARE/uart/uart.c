@@ -198,14 +198,24 @@ void parse_received_data(uint8_t* data) {
 
     // 发送更新后的数据
     char response[100];
-    int len = snprintf(response, sizeof(response), "$%hhd,%hd,%hd,%hd,%hd\n",
-                       ball_detected, ball_x, ball_y, ball_distance, ball_angle);
+    int len = snprintf(response, sizeof(response), "$%hhu,%hd,%hd,%hd,%hd\n,%.2f\n",
+                       ball_detected, ball_x, ball_y, ball_distance, ball_angle, Vx);
     if (len > 0) {
         USART_SendString(response);
         //USART_SendString();
     } else {
         USART_SendString("ERR:RESP\n");
     }
+    
+//    char response[100];
+//    int len = snprintf(response, sizeof(response), "$%hhd,%hd,%hd,%hd,%hd\n",
+//                       ball_detected, ball_x, ball_y, ball_distance, ball_angle);
+//    if (len > 0) {
+//        USART_SendString(response);
+//        //USART_SendString();
+//    } else {
+//        USART_SendString("ERR:RESP\n");
+//    }
 }
 
 
@@ -315,6 +325,3 @@ float dynamic_spike_filter(float new_val) {
     // 如果当前值与均值的差距超过阈值，则认为是异常值
     return (fabs(new_val - mean) > threshold) ? mean : new_val;
 }
-
-
-

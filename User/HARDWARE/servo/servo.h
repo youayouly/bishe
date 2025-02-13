@@ -18,5 +18,5 @@ extern int SERVO3_INIT;
 #define    	SERVO3_TIM_OCXPreloadConfig_FUN		TIM_OC4PreloadConfig
 #define 	SERVO3_TIM_SetCompareX_FUN		  	TIM_SetCompare4
 void Servo_Init3(u16 arr,u16 psc);
-
+void Set_Servo_PWM(uint16_t pwm_value);
 #endif

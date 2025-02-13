@@ -27,6 +27,11 @@ uint8_t checksum = 0;
 int16_t ball_angle = 0;
 int16_t ball_distance = 0;
 
+int16_t stable_count = 0;
+const int STABLE_THRESHOLD = 5; // 稳定阈值，连续5次检测到球稳定
+const int SERVO_GRAB_POSITION = 600; // 舵机抓取位置
+const int SERVO_RELEASE_POSITION = 1800; // 舵机释放位置
+uint32_t grab_start_time = 0;
 
 //停止函数
 void Stop_Motor_With_Kinematics(void) {
@@ -78,12 +83,13 @@ int TIMING_TIM_IRQHandler(void)
 		Get_Velocity_From_Encoder();								//读取左右编码器的值且转换成速度
         Get_KeyVal();		 		
     
-    
+    //这段注释了没有定时，按键也失效
 		if(delay_flag)												//50ms延时
 		{
 			if(++delay_50==10) delay_50=0,delay_flag=0;            	//给主函数提供50ms的精准延时，主要是用于上位机示波器
 			else if(delay_50>10)	delay_50=0,delay_flag=0;
 		}
+    
     switch(Mode) {
             case Normal_Mode:
                 if(++Ros_count == 10) {
@@ -91,36 +97,60 @@ int TIMING_TIM_IRQHandler(void)
                     Ros_count = 0;
                 }
                 break;
-            case Lidar_Avoid_Mode:
-                switch(current_mode2) {
-                  
-                    case LIDAR_AVOID:
-                        if(ball_detected) {
-                            current_mode2 = BALL_TRACKING;
-                            // 更新ball_last_tick，当球数据有效时
-                            ball_last_tick = sys_tick;
-                            //Stop_Motor_With_Kinematics();
-                        } else {
-                            Lidar_Avoid();
-                            Get_Target_Encoder(Move_X, Move_Z);
-                        }
-                        break;
-                    case BALL_TRACKING:
-                        if(!ball_detected) {
-                            current_mode2 = LIDAR_AVOID;
-                            Stop_Motor_With_Kinematics();
-                        } else {
-                            Track_Ball();
-                            // 检查是否达到停止条件
-                            if((abs(ball_x - BALL_CENTER_X) < BALL_DEADZONE) && (abs(ball_distance - TARGET_DISTANCE) < DIST_DEADZONE)) {
-                                Stop_Motor_With_Kinematics();
-                                //return 0;
+             case Lidar_Avoid_Mode:
+//                if (current_mode2 != BALL_GRABBING) {
+                    switch (current_mode2) {
+                        case LIDAR_AVOID:
+                            if (ball_detected) {
+                              if((current_mode2 != BALL_STABLE) && (current_mode2 != BALL_GRABBING)){
+                                current_mode2 = BALL_TRACKING;
+                                }
+                                ball_last_tick = sys_tick;
+                            } else {
+                                Lidar_Avoid();
+                                Get_Target_Encoder(Move_X, Move_Z);
                             }
-                            // 每次检测到球数据，更新 ball_last_tick
-                            ball_last_tick = sys_tick;
-                        }
-                        break;
-                }
+                            break;
+                        case BALL_TRACKING:
+                            if (!ball_detected) {
+                                current_mode2 = LIDAR_AVOID;
+                                //Stop_Motor_With_Kinematics();
+                            } else {
+                                Track_Ball();
+                              
+                                  if (stable_count >= STABLE_THRESHOLD) {
+                                    Stop_Motor_With_Kinematics();
+                                    current_mode2 = BALL_STABLE;
+                                }
+//                                if ((abs(ball_x - BALL_CENTER_X) < BALL_DEADZONE) && (abs(ball_distance - TARGET_DISTANCE) < DIST_DEADZONE)) {
+//                                    Stop_Motor_With_Kinematics();
+//                                    current_mode2 = BALL_STABLE;
+//                                }
+                                ball_last_tick = sys_tick;
+                            }
+                            break;
+                        case BALL_STABLE:
+                            //stable_count = 0; // 重置计数器
+                            SERVO3_INIT = SERVO_GRAB_POSITION;
+                            Set_Servo_PWM(SERVO3_INIT); // 立即设置舵机到释放位置
+//                            grab_start_time = sys_tick;
+//                            current_mode2 = BALL_GRABBING;
+                            break;
+
+                        case BALL_GRABBING:
+//                            if (sys_tick - grab_start_time >= 10000) { // 10秒后抓取完成
+//                                SERVO3_INIT = SERVO_GRAB_POSITION;
+//                                Set_Servo_PWM(SERVO3_INIT);
+//                            } else {
+//                                // 线性插值逐步调整舵机位置
+//                                int target_pwm = SERVO_RELEASE_POSITION - 
+//                                    (SERVO_RELEASE_POSITION - SERVO_GRAB_POSITION) * 
+//                                    (sys_tick - grab_start_time) / 10000;
+//                                Set_Servo_PWM(target_pwm); // 每次中断更新舵机
+//                            }
+                            break;
+                    }
+//                }
                 break;
                 
             case Lidar_Follow_Mode:
@@ -290,18 +320,26 @@ void Track_Ball(void) {
     if (Vz > TURN_SPEED)  Vz = TURN_SPEED;
     if (Vz < -TURN_SPEED) Vz = -TURN_SPEED;
     
-    // 当球既在水平中心且距离在容差范围内时，停止运动 320 10左右  1.1 0.7
-//    if ((abs(error_x) < BALL_DEADZONE_X) && (fabsf(error_distance) < DIST_DEADZONE)) {
-//        Vx = 0;
-//        Vz = 0;
-//        Stop_Motor_With_Kinematics();
-//        //return;
+    //320 300  30
+    if ((abs(error_x) < BALL_DEADZONE_X) && (fabsf(error_distance) < DIST_DEADZONE)) {
+        stable_count++;
+    } 
+//    else {
+//        stable_count = 0;
 //    }
-    //Get_Target_Encoder(Move_X, Move_Z);
+
+//    if (stable_count >= STABLE_THRESHOLD) {
+//        current_mode2 = BALL_STABLE;
+//    }
+    
+    //USART_SendString();
     // 输出目标速度给运动学逆解函数 这列movex和x感觉一样
     Move_X=Vx;
     Move_Z=Vz;
     Get_Target_Encoder(Vx, Vz);
+    
+    
+    //后面在等判断出去
 }
 
 

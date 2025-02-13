@@ -16,11 +16,13 @@ extern uint32_t sys_tick;
 typedef enum {
     LIDAR_AVOID,
     BALL_TRACKING,
-//    GRAB_BALL,
-//    POST_GRAB
+    BALL_STABLE,
+    BALL_GRABBING
 } OperationMode;
 
 extern OperationMode current_mode2;
+
+
 
 // 球数据相关变量
 extern int16_t ball_x , ball_y ;
@@ -40,10 +42,10 @@ extern uint8_t ball_detected_counter;
 #define BALL_CENTER_Y      240
 #define BALL_DEADZONE      40
 
-#define BALL_DEADZONE_X      20      // 转向死区
+#define BALL_DEADZONE_X      50      // 转向死区
 #define BALL_DEADZONE_Y      20
 #define ANGLE_DEADZONE 20    // 像素单位死区
-#define DIST_DEADZONE  20 // ms
+#define DIST_DEADZONE  50 // ms
 
 
 #define STOP_DISTANCE        0.6f    // 停止距离(米)  //实际不是距离，而是视频的距离
@@ -52,21 +54,23 @@ extern uint8_t ball_detected_counter;
 
 // 比例控制参数
 #define KP 0.005f       // 转向比例系数
-#define TARGET_DISTANCE    320  // 目标跟踪距离 (ms)
+#define TARGET_DISTANCE    300  // 目标跟踪距离 (ms)
 #define DETECTION_THRESHOLD  2       // 连续检测阈值
 
 
 // 球追踪控制函数（优化版）
-#define MIN_DISTANCE         0.3f    // 最小安全距离（米）
-#define KP_NORMAL            0.003f  // 正常比例系数
-#define KP_CLOSE             0.0015f // 近距离比例系数
-#define MAX_TURN             0.8f    // 最大转向速度（rad/s）
-#define D_WEIGHT             0.2f    // 微分项权重
-#define FILTER_FACTOR        0.3f    // 低通滤波系数
+extern int16_t stable_count;
+extern const int STABLE_THRESHOLD; // 稳定阈值，连续5次检测到球稳定
+extern const int SERVO_GRAB_POSITION ; // 舵机抓取位置
+extern const int SERVO_RELEASE_POSITION ; // 舵机释放位置
+extern uint32_t grab_start_time;
 
 
 extern float prev_error_distance;
 extern float integral_distance;
+
+extern float Vx;
+extern float Vz;
 
 //PWM限制最大最小值
 #define PWM_MAX  6900
@@ -214,4 +218,5 @@ void Get_Angle(u8 way);
 
 void Track_Ball(void);//追球
 float FilterDistance(float new_distance);//滤波函数
+
 #endif

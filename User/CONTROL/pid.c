@@ -1,5 +1,11 @@
 #include "pid.h"
 
+
+float Vx = 0.0f;
+float Vz = 0.0f;
+
+
+
 //float Velocity_KP = 0.18f,Velocity_KI = 0.17f;	//增量式PI参数，用于电机速度控制，光电编码器参数
 float Velocity_KP = 200,Velocity_KI = 140;			//增量式PI参数，用于电机速度控制，霍尔编码器参数
 

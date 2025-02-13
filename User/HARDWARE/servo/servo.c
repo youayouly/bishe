@@ -55,3 +55,10 @@ void Servo_Init3(u16 arr,u16 psc)
     // 设置初始占空比
     SERVO3_TIM_SetCompareX_FUN(SERVO3_TIM, SERVO3_INIT);  // 设置TIM2通道4的捕获比较寄存器值
 }
+
+void Set_Servo_PWM(uint16_t pwm_value)
+{
+    // 直接调用在 Servo_Init3 中用到的宏，
+    // 用于更新定时器的捕获比较寄存器，从而调整 PWM 占空比
+    SERVO3_TIM_SetCompareX_FUN(SERVO3_TIM, pwm_value);
+}
