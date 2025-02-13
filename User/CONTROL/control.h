@@ -3,7 +3,7 @@
 
 #include "Lidar.h"
 #include "Header.h"
-
+extern float servo_action_counter;
 //捡球
 // 在定时器中断中维护时间戳（假设5ms触发一次）
 extern uint32_t sys_tick;
@@ -54,7 +54,7 @@ extern uint8_t ball_detected_counter;
 
 // 比例控制参数
 #define KP 0.005f       // 转向比例系数
-#define TARGET_DISTANCE    300  // 目标跟踪距离 (ms)
+#define TARGET_DISTANCE    410  // 目标跟踪距离 (ms)
 #define DETECTION_THRESHOLD  2       // 连续检测阈值
 
 

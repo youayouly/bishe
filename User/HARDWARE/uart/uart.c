@@ -199,7 +199,7 @@ void parse_received_data(uint8_t* data) {
     // 发送更新后的数据
     char response[100];
     int len = snprintf(response, sizeof(response), "$%hhu,%hd,%hd,%hd,%hd\n,%.2f\n",
-                       ball_detected, ball_x, ball_y, ball_distance, ball_angle, Vx);
+                       ball_detected, ball_x, ball_y, ball_distance, ball_angle, servo_action_counter);
     if (len > 0) {
         USART_SendString(response);
         //USART_SendString();

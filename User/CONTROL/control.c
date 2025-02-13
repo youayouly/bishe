@@ -29,9 +29,17 @@ int16_t ball_distance = 0;
 
 int16_t stable_count = 0;
 const int STABLE_THRESHOLD = 5; // 稳定阈值，连续5次检测到球稳定
-const int SERVO_GRAB_POSITION = 600; // 舵机抓取位置
-const int SERVO_RELEASE_POSITION = 1800; // 舵机释放位置
+const int SERVO_GRAB_POSITION = 550; // 舵机抓取位置
+const int SERVO_RELEASE_POSITION = 1700; // 舵机释放位置
 uint32_t grab_start_time = 0;
+
+
+float servo_action_counter = 0;
+
+// 舵机动作参数
+#define SERVO_GRAB_STEPS   1000 // 抓取动作持续计数（5ms*200=1s）
+#define SERVO_RELEASE_STEPS 800 // 释放动作持续计数
+// 抓取动作持续计数（5ms*200=1s）
 
 //停止函数
 void Stop_Motor_With_Kinematics(void) {
@@ -73,13 +81,13 @@ int TIMING_TIM_IRQHandler(void)
         // ...原有逻辑...
     
             // 检查是否超时未接收到球数据 两次识别到球之间的时间 而且可以重置
-        if ((sys_tick - ball_last_tick) > BALL_TIMEOUT) {
-            // 超时了：认为球丢失，停止车辆，切换到避障模式
-            //Stop_Motor_With_Kinematics();
-            // 可以选择更新模式变量，比如：
-            current_mode2 = LIDAR_AVOID;
-        }
-        
+//        if ((sys_tick - ball_last_tick) > BALL_TIMEOUT) {
+//            // 超时了：认为球丢失，停止车辆，切换到避障模式
+//            //Stop_Motor_With_Kinematics();
+//            // 可以选择更新模式变量，比如：
+//            current_mode2 = LIDAR_AVOID;
+//        }
+//        
 		Get_Velocity_From_Encoder();								//读取左右编码器的值且转换成速度
         Get_KeyVal();		 		
     
@@ -129,25 +137,34 @@ int TIMING_TIM_IRQHandler(void)
                                 ball_last_tick = sys_tick;
                             }
                             break;
+              
                         case BALL_STABLE:
-                            //stable_count = 0; // 重置计数器
-                            SERVO3_INIT = SERVO_GRAB_POSITION;
-                            Set_Servo_PWM(SERVO3_INIT); // 立即设置舵机到释放位置
-//                            grab_start_time = sys_tick;
-//                            current_mode2 = BALL_GRABBING;
-                            break;
+                                // 进入稳定状态后立即启动抓取
+                                SERVO3_INIT = SERVO_GRAB_POSITION; // 600
+                                Set_Servo_PWM(SERVO3_INIT);
+                                servo_action_counter = SERVO_GRAB_STEPS; // 初始化计数器
+                                current_mode2 = BALL_GRABBING; // 进入抓取动作状态
+                                break;
 
                         case BALL_GRABBING:
-//                            if (sys_tick - grab_start_time >= 10000) { // 10秒后抓取完成
-//                                SERVO3_INIT = SERVO_GRAB_POSITION;
-//                                Set_Servo_PWM(SERVO3_INIT);
-//                            } else {
-//                                // 线性插值逐步调整舵机位置
-//                                int target_pwm = SERVO_RELEASE_POSITION - 
-//                                    (SERVO_RELEASE_POSITION - SERVO_GRAB_POSITION) * 
-//                                    (sys_tick - grab_start_time) / 10000;
-//                                Set_Servo_PWM(target_pwm); // 每次中断更新舵机
-//                            }
+                            if (servo_action_counter > 0) {
+                                servo_action_counter--; // 每次中断递减
+                            } 
+                            if(servo_action_counter<=500)
+                              {
+                                // 抓取完成，切换到释放状态
+                          
+                                SERVO3_INIT = SERVO_RELEASE_POSITION; // 1700
+                                Set_Servo_PWM(SERVO3_INIT);
+                               
+                                //current_mode2 = LIDAR_AVOID;
+                            }
+                            
+                            if(servo_action_counter<=0){
+                                 //servo_action_counter = SERVO_RELEASE_STEPS;
+                                 current_mode2 = LIDAR_AVOID;
+                            }
+                            
                             break;
                     }
 //                }
@@ -263,7 +280,7 @@ void Track_Ball(void) {
     
     // 计算误差：水平误差与距离误差
     int error_x = ball_x - BALL_CENTER_X;  //320
-    float error_distance = ball_distance - TARGET_DISTANCE; //900 350
+    float error_distance = ball_distance - TARGET_DISTANCE; //900 400
     
     
     // 积分项（带抗饱和）
