@@ -341,9 +341,9 @@ void Track_Ball(void) {
     if ((abs(error_x) < BALL_DEADZONE_X) && (fabsf(error_distance) < DIST_DEADZONE)) {
         stable_count++;
     } 
-//    else {
-//        stable_count = 0;
-//    }
+    else {
+        stable_count = 0;
+    }
 
 //    if (stable_count >= STABLE_THRESHOLD) {
 //        current_mode2 = BALL_STABLE;

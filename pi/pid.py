@@ -6,7 +6,7 @@ from tkinter import Tk, Scale, HORIZONTAL, Label
 distances = np.linspace(1200, 200, 901)
 
 # 定义目标位置
-target_distance = 300
+target_distance = 500
 target_angle = 0  # 目标角度为正前方 0 度
 
 # 初始 PID 参数
