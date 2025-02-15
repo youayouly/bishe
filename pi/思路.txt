@@ -29,15 +29,15 @@ int16_t ball_distance = 0;
 
 int16_t stable_count = 0;
 const int STABLE_THRESHOLD = 5; // 稳定阈值，连续5次检测到球稳定
-const int SERVO_GRAB_POSITION = 600; // 舵机抓取位置
-const int SERVO_RELEASE_POSITION = 1800; // 舵机释放位置
+const int SERVO_GRAB_POSITION = 550; // 舵机抓取位置
+const int SERVO_RELEASE_POSITION = 1700; // 舵机释放位置
 uint32_t grab_start_time = 0;
 
 
-uint32_t servo_action_counter = 0;
+float servo_action_counter = 0;
 
 // 舵机动作参数
-#define SERVO_GRAB_STEPS   2000 // 抓取动作持续计数（5ms*200=1s）
+#define SERVO_GRAB_STEPS   1000 // 抓取动作持续计数（5ms*200=1s）
 #define SERVO_RELEASE_STEPS 800 // 释放动作持续计数
 // 抓取动作持续计数（5ms*200=1s）
 
@@ -81,13 +81,13 @@ int TIMING_TIM_IRQHandler(void)
         // ...原有逻辑...
     
             // 检查是否超时未接收到球数据 两次识别到球之间的时间 而且可以重置
-        if ((sys_tick - ball_last_tick) > BALL_TIMEOUT) {
-            // 超时了：认为球丢失，停止车辆，切换到避障模式
-            //Stop_Motor_With_Kinematics();
-            // 可以选择更新模式变量，比如：
-            current_mode2 = LIDAR_AVOID;
-        }
-        
+//        if ((sys_tick - ball_last_tick) > BALL_TIMEOUT) {
+//            // 超时了：认为球丢失，停止车辆，切换到避障模式
+//            //Stop_Motor_With_Kinematics();
+//            // 可以选择更新模式变量，比如：
+//            current_mode2 = LIDAR_AVOID;
+//        }
+//        
 		Get_Velocity_From_Encoder();								//读取左右编码器的值且转换成速度
         Get_KeyVal();		 		
     
@@ -149,13 +149,22 @@ int TIMING_TIM_IRQHandler(void)
                         case BALL_GRABBING:
                             if (servo_action_counter > 0) {
                                 servo_action_counter--; // 每次中断递减
-                            } else {
+                            } 
+                            if(servo_action_counter<=500)
+                              {
                                 // 抓取完成，切换到释放状态
-                                SERVO3_INIT = SERVO_RELEASE_POSITION; // 1800
+                          
+                                SERVO3_INIT = SERVO_RELEASE_POSITION; // 1700
                                 Set_Servo_PWM(SERVO3_INIT);
-                                servo_action_counter = SERVO_RELEASE_STEPS;
+                               
                                 //current_mode2 = LIDAR_AVOID;
                             }
+                            
+                            if(servo_action_counter<=0){
+                                 //servo_action_counter = SERVO_RELEASE_STEPS;
+                                 current_mode2 = LIDAR_AVOID;
+                            }
+                            
                             break;
                     }
 //                }
@@ -206,6 +215,9 @@ int TIMING_TIM_IRQHandler(void)
 // 全局变量
 float prev_error_distance = 0.0f;
 float integral_distance = 0.0f;
+
+float integral_angle = 0.0f;
+float prev_error_angle = 0.0f;
 
 //均值滤波 放置车前后波动
 #define FILTER_SIZE 5
@@ -258,19 +270,24 @@ void Track_Ball(void) {
     const float K_turn = 0.004f;       // 略微降低转向增益，防止转向过于激进
 
     // PID参数
-    const float Kp = 0.0005f;    // 增加比例增益，增强响应性，但需注意可能引起的过冲
+    const float Kp = 0.0002f;    // 增加比例增益，增强响应性，但需注意可能引起的过冲
     const float Ki = 0.0001f;    // 积分增益保持较低，防止积分累积过快
-    const float Kd = 0.001f;     // 增加微分增益，改善接近目标时的震荡控制
-    const float dt = 0.1f;       // 控制周期不变
+    const float Kd = 0.01f;     // 增加微分增益，改善接近目标时的震荡控制
+
+        
+    const float Kp_angle = 0.002f;    // 增加比例增益，增强响应性，但需注意可能引起的过冲
+    const float Ki_angle = 0.0003f;    // 积分增益保持较低，防止积分累积过快
+    const float Kd_angle = 0.03f;     // 增加微分增益，改善接近目标时的震荡控制
+
+    const float dt = 0.005f;       // 控制周期不变
         
     // 定义速度上限
     const float MAX_FORWARD_SPEED = FORWARD_SPEED;   // 0.15 m/s
     const float MAX_BACKWARD_SPEED = 0.10f;            // 限制后退速度（0.10 m/s）
     
-
-    
     // 计算误差：水平误差与距离误差
     int error_x = ball_x - BALL_CENTER_X;  //320
+    //int error_y = ball_y - BALL_CENTER_Y;  //320
     float error_distance = ball_distance - TARGET_DISTANCE; //900 400
     
     
@@ -279,62 +296,75 @@ void Track_Ball(void) {
     if (fabs(error_distance) > 0.5f * TARGET_DISTANCE) {
         integral_distance = 0.0f;  // 误差过大时复位积分
     }
+    
+    integral_angle += error_x * dt;
+    if (abs(error_x) > 0.5f * BALL_CENTER_X) {
+        integral_angle = 0.0f;  // 误差过大时复位积分
+    }
+
 
     // 微分项
     float derivative = (error_distance - prev_error_distance) / dt;
     prev_error_distance = error_distance;
+    
+    float derivative_angle = (error_x - prev_error_angle) / dt;
+    prev_error_angle = error_x;
 
     // 计算速度
     Vx = Kp * error_distance + Ki * integral_distance + Kd * derivative;
-
+    // 计算转向速度
+    Vz = Kp_angle * error_x + Ki_angle * integral_angle + Kd_angle * derivative_angle;
+    Vz= -Vz;
     // 限幅处理
     Vx = fminf(FORWARD_SPEED, fmaxf(-MAX_BACKWARD_SPEED, Vx));
+    // 限幅处理
+    Vz = fminf(TURN_SPEED, fmaxf(-TURN_SPEED, Vz));
 
     
     
     // ① 前后运动控制（基于距离误差） 1.1 0.7  0.08
-    if (fabsf(error_distance) < DIST_DEADZONE && error_distance>0 ) {
-        // 当距离在容差范围内，认为达到目标，不运动
-        Vx = 0;
-    }
-    else if (error_distance> DIST_DEADZONE){  
-        // 球太远，前进
-        Vx = K_distance * error_distance;
+//    if (fabsf(error_distance) < DIST_DEADZONE && abs(error_y)<10 ) {
+//        // 当距离在容差范围内，认为达到目标，不运动
+//        Vx = 0;
+//    }
+//    else if (error_distance> DIST_DEADZONE){  
+//        // 球太远，前进
+//        Vx = K_distance * error_distance;
 
-        if (Vx > MAX_FORWARD_SPEED) {
-            Vx = MAX_FORWARD_SPEED;
-        }
-    }
-    else {  
-        // 球太近，后退
-        // 加入一个负误差死区：如果误差大于 -0.05m，则不后退
-        if (error_distance > -DIST_DEADZONE) {
-            Vx = 0;
-        } else {
-            Vx = K_distance * error_distance;  // 结果为负
-            if (Vx < -MAX_BACKWARD_SPEED) {
-                Vx = MAX_BACKWARD_SPEED;
-            }
-        }
-    }
+//        if (Vx > MAX_FORWARD_SPEED) {
+//            Vx = MAX_FORWARD_SPEED;
+//        }
+//    }
+//    else {  
+//        // 球太近，后退
+//        // 加入一个负误差死区：如果误差大于 -0.05m，则不后退
+//        if (error_distance > -DIST_DEADZONE) {
+//            Vx = 0;
+//        } else {
+//            Vx = K_distance * error_distance;  // 结果为负
+//            if (Vx < -MAX_BACKWARD_SPEED) {
+//                Vx = MAX_BACKWARD_SPEED;
+//            }
+//        }
+//    }
     
     // ② 左右转向控制（基于水平误差）
-    if (abs(error_x) < BALL_DEADZONE_X) {
-        Vz = 0;
-    }
-    else {
-        Vz = -K_turn * error_x*3;  // 负号：当球在右侧（error_x正）时，产生负转向信号，车头向左
-    }
-    if (Vz > TURN_SPEED)  Vz = TURN_SPEED;
-    if (Vz < -TURN_SPEED) Vz = -TURN_SPEED;
-    
-    //320 300  30
-    if ((abs(error_x) < BALL_DEADZONE_X) && (fabsf(error_distance) < DIST_DEADZONE)) {
+//    if (abs(error_x) < BALL_DEADZONE_X) {
+//        Vz = 0;
+//    }
+//    else {
+//        Vz = -K_turn * error_x*3;  // 负号：当球在右侧（error_x正）时，产生负转向信号，车头向左
+//    }
+//    if (Vz > TURN_SPEED)  Vz = TURN_SPEED;
+//    if (Vz < -TURN_SPEED) Vz = -TURN_SPEED;
+//    
+    //320 300  30       这里换成x                          
+    if ((abs(error_x) < BALL_DEADZONE_X) && (fabs(error_distance) < DIST_DEADZONE)) {
         stable_count++;
     } 
-//    else {
-//        stable_count = 0;
-//    }
+    else {
+        stable_count = 0;
+    }
 
 //    if (stable_count >= STABLE_THRESHOLD) {
 //        current_mode2 = BALL_STABLE;

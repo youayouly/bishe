@@ -4,7 +4,7 @@ uint8_t rx_buf[RX_BUF_SIZE];  // 定义接收缓冲区
 uint8_t rx_index = 0;         // 初始化缓冲区索引
 uint8_t data_ready = 0;       // 初始化数据准备标志
 
-#define RING_BUFFER_SIZE 256  // 根据需要调整缓冲区大小
+#define RING_BUFFER_SIZE 512  // 根据需要调整缓冲区大小
 
 typedef union {
     float f;
@@ -129,6 +129,9 @@ void USART_SendString(const char* str)
         str++;
     }
 }
+// 假设这些全局变量用于保存上一次的测量值
+int16_t prev_x = 0, prev_y = 0, prev_dist = 0, prev_angle = 0;
+static uint8_t prev_valid = 0;  // 标记上一次是否有效检测到球
 
 static uint16_t ack_counter = 0;  // ACK 发送计数器
 void parse_received_data(uint8_t* data) {
@@ -151,13 +154,42 @@ void parse_received_data(uint8_t* data) {
     }
 
     // 检查 parsed_ball_detected 是否为 1 或 2
-    if (parsed_ball_detected != 1 && parsed_ball_detected != 2) {
+    if ((parsed_ball_detected != 1 && parsed_ball_detected != 2) || (dist < 350 && dist > 0)) {
         USART_SendString("ERR:VAL\n");
         return;
     }
+     
+ // 修改后的突变检测逻辑
+if (parsed_ball_detected == 1 || parsed_ball_detected == 2) {
+    // 首次检测到球时不检查突变
+    if (prev_valid) {
+        // 动态阈值（根据距离调整）
+        float dynamic_threshold = prev_dist * 0.3f; // 距离越远允许变化越大
+        dynamic_threshold = fmaxf(100.0f, fminf(300.0f, dynamic_threshold));
+        
+        if (abs(x - prev_x) > dynamic_threshold || 
+            abs(y - prev_y) > dynamic_threshold || 
+            abs(dist - prev_dist) > dynamic_threshold) {
+            USART_SendString("ERR:JUMP\n");
+            return;
+        }
+    }
+    
+    // 更新历史数据
+    prev_x = x;
+    prev_y = y;
+    prev_dist = dist;
+    prev_valid = 1;
+} else {
+    prev_valid = 0;
+}
+
+
+//    ball_distance = dynamic_spike_filter(ball_distance); // 先过滤突变
+//    ball_distance = FilterDistance(ball_distance);     // 再均值滤波
     // 定义差分阈值
-    const int16_t DIST_DIFF_THRESHOLD = 300; // 根据实际情况设置阈值
-    const int16_t ANGLE_DIFF_THRESHOLD = 300; // 根据实际情况设置阈值
+//    const int16_t DIST_DIFF_THRESHOLD = 300; // 根据实际情况设置阈值
+//    const int16_t ANGLE_DIFF_THRESHOLD = 300; // 根据实际情况设置阈值
 
     // 检查距离和角度的差分是否超过阈值
           

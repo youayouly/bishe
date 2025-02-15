@@ -2,15 +2,21 @@ import cv2
 import numpy as np
 import time
 import math
+import configparser
+from joblib import Parallel, delayed
 
 class BallDetector:
-    def __init__(self, show_display=False, record_video=False, focal_length=554.26, real_diameter=0.04, 
-                 smoothing_window=5, calibration_file='/usr/src/ai/calibration/valid/calibration.xml'):
+    def __init__(self, show_display=False, record_video=False, focal_length=554.26, real_diameter=0.04, config_file='/usr/src/ai/config.txt'):
+        # 读取配置文件
+        config = configparser.ConfigParser()
+        config.read(config_file)
+        
         # 相机初始化
         self.cap = cv2.VideoCapture(0)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)  # 设置分辨率
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        self.cap.set(cv2.CAP_PROP_FPS, 30)
+        self.cap.set(cv2.CAP_PROP_FPS, 30)  # 设置帧率
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))  # 设置格式为 MJPG
         
         # 物理参数
         self.focal_length = focal_length
@@ -22,33 +28,37 @@ class BallDetector:
         self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
         
         # 橙色HSV阈值
-        self.orange_lower = np.array([0, 100, 100])
-        self.orange_upper = np.array([22, 255, 255])
+        self.orange_lower = np.array([config.getint('DEFAULT', 'orange_lower_h'),
+                                      config.getint('DEFAULT', 'orange_lower_s'),
+                                      config.getint('DEFAULT', 'orange_lower_v')])
+        self.orange_upper = np.array([config.getint('DEFAULT', 'orange_upper_h'),
+                                      config.getint('DEFAULT', 'orange_upper_s'),
+                                      config.getint('DEFAULT', 'orange_upper_v')])
         
         # 白色灰度参数
-        self.white_lower = 200   # 亮度下限
-        self.white_upper = 255   # 亮度上限
-        self.white_blur = 5      # 高斯模糊核大小
+        self.white_lower = config.getint('DEFAULT', 'white_lower')
+        self.white_upper = config.getint('DEFAULT', 'white_upper')
+        self.white_blur = config.getint('DEFAULT', 'white_blur')
         
         # 形态学参数
-        self.orange_iter_open = 2
-        self.orange_iter_close = 3
-        self.white_iter_open = 3
-        self.white_iter_close = 5
+        self.orange_iter_open = config.getint('DEFAULT', 'orange_iter_open')
+        self.orange_iter_close = config.getint('DEFAULT', 'orange_iter_close')
+        self.white_iter_open = config.getint('DEFAULT', 'white_iter_open')
+        self.white_iter_close = config.getint('DEFAULT', 'white_iter_close')
         
         # 几何参数
-        self.min_radius = 10
-        self.max_radius = 100
-        self.min_circularity = 0.65
+        self.min_radius = config.getint('DEFAULT', 'min_radius')
+        self.max_radius = config.getint('DEFAULT', 'max_radius')
+        self.min_circularity = config.getfloat('DEFAULT', 'min_circularity')
         
         # 反光抑制阈值
-        self.glare_thresh = 234
+        self.glare_thresh = config.getint('DEFAULT', 'glare_thresh')
         
         # 标定参数加载
-        self._load_calibration(calibration_file)
+        self._load_calibration(config.get('DEFAULT', 'calibration_file'))
         
         # 滤波参数
-        self.smoothing_window = smoothing_window
+        self.smoothing_window = config.getint('DEFAULT', 'smoothing_window')
         self.x_history = []
         self.y_history = []
         
@@ -58,9 +68,17 @@ class BallDetector:
         if self.record_video:
             self.video_writer = cv2.VideoWriter('/usr/src/ai/record/detection.avi', 
                                                 cv2.VideoWriter_fourcc(*'XVID'), 
-                                                30, (640, 480))
+                                                8, (640, 480))
         else:
             self.video_writer = None
+
+        # 初始化FPS相关变量
+        self.frame_count = 0
+        self.start_time = time.time()
+        
+        # 预分配缓冲区
+        self.gray_buf = np.zeros((480, 640), dtype=np.uint8)
+        self.hsv_buf = np.zeros((480, 640, 3), dtype=np.uint8)
 
     def _load_calibration(self, calibration_file):
         """加载相机标定参数"""
@@ -79,8 +97,8 @@ class BallDetector:
     def _set_default_calibration(self):
         """设置默认标定参数"""
         self.camera_matrix = np.array([[self.focal_length, 0, 320],
-                                      [0, self.focal_length, 240],
-                                      [0, 0, 1]], dtype=np.float32)
+                                       [0, self.focal_length, 240],
+                                       [0, 0, 1]], dtype=np.float32)
         self.distortion_coefficients = np.zeros(5, dtype=np.float32)
 
     def _init_trackbars(self):
@@ -89,27 +107,27 @@ class BallDetector:
         cv2.resizeWindow("Settings", 800, 600)
         
         # 橙色小球参数
-        cv2.createTrackbar("Orange H1", "Settings", 0, 179, lambda x: x)
-        cv2.createTrackbar("Orange H2", "Settings", 22, 179, lambda x: x)
-        cv2.createTrackbar("Orange S1", "Settings", 100, 255, lambda x: x)
-        cv2.createTrackbar("Orange S2", "Settings", 255, 255, lambda x: x)
-        cv2.createTrackbar("Orange V1", "Settings", 100, 255, lambda x: x)
-        cv2.createTrackbar("Orange V2", "Settings", 255, 255, lambda x: x)
-        cv2.createTrackbar("O_Open", "Settings", 2, 5, lambda x: x)
-        cv2.createTrackbar("O_Close", "Settings", 3, 5, lambda x: x)
+        cv2.createTrackbar("Orange H1", "Settings", self.orange_lower[0], 179, lambda x: x)
+        cv2.createTrackbar("Orange H2", "Settings", self.orange_upper[0], 179, lambda x: x)
+        cv2.createTrackbar("Orange S1", "Settings", self.orange_lower[1], 255, lambda x: x)
+        cv2.createTrackbar("Orange S2", "Settings", self.orange_upper[1], 255, lambda x: x)
+        cv2.createTrackbar("Orange V1", "Settings", self.orange_lower[2], 255, lambda x: x)
+        cv2.createTrackbar("Orange V2", "Settings", self.orange_upper[2], 255, lambda x: x)
+        cv2.createTrackbar("O_Open", "Settings", self.orange_iter_open, 5, lambda x: x)
+        cv2.createTrackbar("O_Close", "Settings", self.orange_iter_close, 5, lambda x: x)
         
         # 白色小球参数
-        cv2.createTrackbar("W_Lower", "Settings", 154, 255, lambda x: x)
-        cv2.createTrackbar("W_Upper", "Settings", 186, 255, lambda x: x)
-        cv2.createTrackbar("W_Blur", "Settings", 5, 15, lambda x: x if x%2==1 else x+1)
-        cv2.createTrackbar("W_Open", "Settings", 0, 5, lambda x: x)
-        cv2.createTrackbar("W_Close", "Settings", 5, 5, lambda x: x)
+        cv2.createTrackbar("W_Lower", "Settings", self.white_lower, 255, lambda x: x)
+        cv2.createTrackbar("W_Upper", "Settings", self.white_upper, 255, lambda x: x)
+        cv2.createTrackbar("W_Blur", "Settings", self.white_blur, 15, lambda x: x if x % 2 == 1 else x+1)
+        cv2.createTrackbar("W_Open", "Settings", self.white_iter_open, 5, lambda x: x)
+        cv2.createTrackbar("W_Close", "Settings", self.white_iter_close, 5, lambda x: x)
         
         # 通用参数
-        cv2.createTrackbar("MinRadius", "Settings", 10, 50, lambda x: x)
-        cv2.createTrackbar("MaxRadius", "Settings", 100, 200, lambda x: x)
-        cv2.createTrackbar("Circularity", "Settings", 65, 100, lambda x: x)
-        cv2.createTrackbar("GlareThresh", "Settings", 234, 255, lambda x: x)
+        cv2.createTrackbar("MinRadius", "Settings", self.min_radius, 50, lambda x: x)
+        cv2.createTrackbar("MaxRadius", "Settings", self.max_radius, 200, lambda x: x)
+        cv2.createTrackbar("Circularity", "Settings", int(self.min_circularity * 100), 100, lambda x: x)
+        cv2.createTrackbar("GlareThresh", "Settings", self.glare_thresh, 255, lambda x: x)
 
     def update_settings(self):
         """从轨迹栏更新所有参数"""
@@ -140,82 +158,81 @@ class BallDetector:
         self.min_circularity = cv2.getTrackbarPos("Circularity", "Settings") / 100.0
         self.glare_thresh = cv2.getTrackbarPos("GlareThresh", "Settings")
 
-    def _process_white(self, frame):
+    def _process_whitе(self, frame):
         """灰度法处理白色小球"""
-        # 转换为灰度并高斯模糊
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (self.white_blur, self.white_blur), 0)
-        
-        # 自适应阈值处理
         _, mask = cv2.threshold(blurred, self.white_lower, self.white_upper, cv2.THRESH_BINARY)
-        
-        # 形态学操作
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel, iterations=self.white_iter_open)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel, iterations=self.white_iter_close)
-        
         return mask
 
     def _process_orange(self, frame):
-        """HSV法处理橙色小球"""
+        """HSV法处理橙色小球，合并开闭运算为一次形态学操作"""
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, self.orange_lower, self.orange_upper)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel, iterations=self.orange_iter_open)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel, iterations=self.orange_iter_close)
-        return mask
+        return cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel, iterations=self.orange_iter_close)
 
     def _find_contours(self, mask):
         """轮廓检测与筛选"""
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         valid = []
-        
         for cnt in contours:
             area = cv2.contourArea(cnt)
             if area < 100:
                 continue
-                
-            # 圆形度计算
             perimeter = cv2.arcLength(cnt, True)
             if perimeter == 0:
                 continue
-            circularity = (4 * np.pi * area) / (perimeter**2)
-            
-            # 边界圆验证
+            circularity = (4 * np.pi * area) / (perimeter ** 2)
             (x, y), radius = cv2.minEnclosingCircle(cnt)
-            
-            if (self.min_radius <= radius <= self.max_radius and 
-                circularity >= self.min_circularity):
-                valid.append((x, y, radius*2))
-                
+            if self.min_radius <= radius <= self.max_radius and circularity >= self.min_circularity:
+                valid.append((x, y, radius * 2))
         return valid
 
     def detect_balls(self, frame):
-        """主检测流程"""
+        """主检测流程（使用整帧检测，不使用预计算映射表）"""
         try:
-            # 预处理
-            frame = cv2.undistort(frame, self.camera_matrix, self.distortion_coefficients)
-            glare_free = self._glare_suppression(frame)
+            # 去畸变处理（直接调用 undistort）
+            undistorted = cv2.undistort(frame, self.camera_matrix, self.distortion_coefficients)
+            # 复用灰度图计算HSV中的V通道
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            hsv[:, :, 2] = gray  # 使用灰度图替代V通道
+            frame_modified = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
             
-            # 并行处理两种颜色
-            orange_mask = self._process_orange(glare_free)
-            white_mask = self._process_white(glare_free)
+            glare_free = self._glare_suppression(frame_modified)
             
-            # 结果融合
+            # 并行处理两种颜色（使用线程后端避免 pickle 问题）
+            results = Parallel(n_jobs=2, backend='threading')([
+                delayed(self._process_orange)(glare_free),
+                delayed(self._process_whitе)(glare_free)
+            ])
+            orange_mask, white_mask = results
+            
+            # 轮廓检测
             orange_balls = self._find_contours(orange_mask)
             white_balls = self._find_contours(white_mask)
             
             # 优先返回橙色检测结果
             if orange_balls:
-                return self._calculate_metrics(orange_balls[0], frame)
+                result = self._calculate_metrics(orange_balls[0], frame)
             elif white_balls:
-                return self._calculate_metrics(white_balls[0], frame)
-            return 0, 0, 0, 0, 0, frame
+                result = self._calculate_metrics(white_balls[0], frame)
+            else:
+                result = (0, 0, 0, 0, 0, frame)
             
+            return result
         except Exception as e:
             print(f"检测异常: {str(e)}")
             return 0, 0, 0, 0, 0, frame
 
     def _glare_suppression(self, frame):
-        """反光抑制处理"""
+        """反光抑制处理，根据图像平均亮度决定是否启用"""
+        avg_brightness = np.mean(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+        if avg_brightness < 100:  # 低光照时不处理反光
+            return frame
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         _, glare_mask = cv2.threshold(gray, self.glare_thresh, 255, cv2.THRESH_BINARY)
         return cv2.inpaint(frame, glare_mask, 3, cv2.INPAINT_TELEA)
@@ -225,17 +242,14 @@ class BallDetector:
         try:
             x, y, diameter = ball_info
             x, y = int(x), int(y)
-            # 使用滑动平均滤波（如需卡尔曼滤波，请切换下面两行）
-            x, y = self._apply_moving_average(x, y)
-            # x, y = self._apply_kalman_filter(x, y)
             if diameter <= 0 or not (0 <= x < 640 and 0 <= y < 480):
                 return 0, 0, 0, 0, 0, frame
             distance = (self.real_diameter * self.focal_length) / max(diameter, 1e-6)
             dx = x - 320  # 图像中心为基准
             angle = math.degrees(math.atan(dx / self.focal_length)) if self.focal_length != 0 else 0
-            if self.show_display:
-                self._draw_debug_info(frame, int(x), int(y), distance, angle)
-            return 1, int(x), int(y), distance, angle, frame
+            if self.show_display or self.record_video:
+                self._draw_debug_info(frame, x, y, distance, angle)
+            return 1, x, y, distance, angle, frame
         except Exception as e:
             print("指标计算异常:", e)
             return 0, 0, 0, 0, 0, frame
@@ -250,59 +264,50 @@ class BallDetector:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
         cv2.putText(frame, f"Angle: {angle:.1f} deg", (10, 70),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-
-    def _apply_moving_average(self, x, y):
-        """滑动平均滤波"""
-        self.x_history.append(x)
-        self.y_history.append(y)
-        if len(self.x_history) > self.smoothing_window:
-            self.x_history.pop(0)
-            self.y_history.pop(0)
-        return np.mean(self.x_history), np.mean(self.y_history)
-
-    def _apply_kalman_filter(self, x, y):
-        """卡尔曼滤波处理"""
-        measurement = np.array([[np.float32(x)], [np.float32(y)]])
-        self.kalman.correct(measurement)
-        prediction = self.kalman.predict()
-        return prediction[0][0], prediction[1][0]
+        # 如果需要显示FPS信息，则调用 self.fps（已在__init__中初始化）
+        cv2.putText(frame, f"FPS: {self.fps:.2f}", (10, 110),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
     def detect_and_display(self):
         """主检测与显示循环"""
-        while True:
-            ret, frame = self.cap.read()
-            if not ret:
-                break
-            if self.show_display:
-                self.update_settings()
-                orange_mask = self._process_orange(frame)
-                white_mask = self._process_white(frame)
-                cv2.imshow("Orange Mask", orange_mask)
-                cv2.imshow("White Mask", white_mask)
-            status, x, y, distance, angle, processed_frame = self.detect_balls(frame)
-
-            # 在终端实时打印检测到的数据
-            if status:
-                print(f"位置: ({x}, {y}), 距离: {distance:.2f}米, 角度: {angle:.1f}度")
-
-            cv2.imshow("Frame", processed_frame)
-
-            # 记录视频
-            if self.record_video and self.video_writer is not None:
-                self.video_writer.write(processed_frame)
-
-            # 如果需要，将数据发送到STM32的逻辑可以在此添加
-
-            # 按下'q'键退出循环
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-            time.sleep(0.1)
-        
-        self.cap.release()
-        if self.video_writer is not None:
-            self.video_writer.release()
-        cv2.destroyAllWindows()
+        try:
+            while True:
+                start_time = time.time()
+                ret, frame = self.cap.read()
+                if not ret:
+                    break
+                if self.show_display:
+                    self.update_settings()
+                    orange_mask_disp = self._process_orange(frame)
+                    white_mask_disp = self._process_whitе(frame)
+                    cv2.imshow("Orange Mask", orange_mask_disp)
+                    cv2.imshow("White Mask", white_mask_disp)
+                status, x, y, distance, angle, processed_frame = self.detect_balls(frame)
+                
+                # 更新FPS计数器
+                self.frame_count += 1
+                elapsed_time = time.time() - self.start_time
+                self.fps = self.frame_count / elapsed_time
+                
+                if status:
+                    print(f"位置: ({x}, {y}), 距离: {distance:.2f}米, 角度: {angle:.1f}度, FPS: {self.fps:.2f}")
+                
+                cv2.imshow("Frame", processed_frame)
+                
+                if self.record_video and self.video_writer is not None:
+                    self.video_writer.write(processed_frame)
+                
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+                
+                sleep_time = max(0, (1/30) - (time.time() - start_time))
+                time.sleep(sleep_time)
+        finally:
+            self.cap.release()
+            if self.video_writer is not None:
+                self.video_writer.release()
+            cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    detector = BallDetector(show_display=False, record_video=True)
+    detector = BallDetector(show_display=False, record_video=False)
     detector.detect_and_display()
