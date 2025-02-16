@@ -58,7 +58,8 @@ void Stop_Motor_With_Kinematics(void) {
 
 // 定义全局变量（实际内存分配）
 OperationMode current_mode2 = LIDAR_AVOID; // 初始化为避障模式
-
+// 定义一个全局或静态变量，记录连续未检测到球的次数
+static int ball_not_detect_count = 0;
 
 /**************************************************************************
 Function: Control Function
@@ -121,9 +122,14 @@ int TIMING_TIM_IRQHandler(void)
                             break;
                         case BALL_TRACKING:
                             if (!ball_detected) {
+                               ball_not_detect_count++;  // 累加未检测到次数
+                                 if (ball_not_detect_count >= 4) {
                                 current_mode2 = LIDAR_AVOID;
                                 //Stop_Motor_With_Kinematics();
+                                 }
                             } else {
+                                      // 检测到球，重置计数器
+                                ball_not_detect_count = 0;
                                 Track_Ball();
                               
                                   if (stable_count >= STABLE_THRESHOLD) {
@@ -256,12 +262,12 @@ void Track_Ball(void) {
     }
     
     // PID参数
-    const float Kp = 0.0005f;
+    const float Kp = 0.005f;
     const float Ki = 0.001f;
-    const float Kd = 0.001f;
+    const float Kd = 0.005f;
     const float Kp_angle = 0.0001f;
-    const float Ki_angle = 0.0005f;
-    const float Kd_angle = 0.003f;
+    const float Ki_angle = 0.0001f;
+    const float Kd_angle = 0.005f;
     const float dt = 0.005f;
     
     // 速度上限
@@ -304,21 +310,24 @@ void Track_Ball(void) {
     // 调整靠近球时的运动策略
     int error_x = ball_x - BALL_CENTER_X;
     int error_y = ball_y - BALL_CENTER_Y;
-    if (ball_distance > 1.3*TARGET_DISTANCE) {
+    if ( abs(error_x) > 50) {
         // 当球较远时，若横向误差大于50则先小幅后退调整角度，
         // 否则限制前进速度
-        if (abs(error_x) > 50){
+
             Vx = -0.05f;  // 小速后退帮助调整
             Vz = -Vz;
-        }
-        else
+    
+        
             Vx = fminf(Vx, FORWARD_SPEED);
     } else {
         // 当球较近时，若误差太小或检测到负误差，则停车
-        if (fabs(error_distance) < 60)
-            Vx = fminf(Vx, 0.04*FORWARD_SPEED);
+        if ( error_distance < 130 && error_distance > 30)
+            Vx = fminf(Vx, 0.5* FORWARD_SPEED);
+        else if (error_distance < 30 && error_distance>=0){
+          Vx=0;
+        }
         else if (error_distance < 0)
-            Vx = -0.05f;  // 小速后退帮助调整
+            Vx = -0.1f;  // 小速后退帮助调整
             Vx = fminf(Vx, 0.2*FORWARD_SPEED);
     }
     
