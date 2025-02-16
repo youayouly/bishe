@@ -250,145 +250,89 @@ float filter_spike(float new_distance) {
 }
 
 void Track_Ball(void) {
-  
-    // 1. 补码转换：确保 ball_angle 为带符号数
+    // 补码转换
     if (ball_angle > 32767) {
         ball_angle = ball_angle - 65536;
-
     }
     
-    // 2. 将 ball_distance 从毫米转换为米（假设 ball_distance > 10 有效）
-//    if (ball_distance > 10) {
-//        ball_distance = ball_distance / 1000.0f;
-//    }
-//    
-
-    // 假设水平中心为 BALL_CENTER_X（320），水平容差设为 BALL_DEADZONE_X（20像素）
-    
-        // 前后控制和转向控制增益 300-1200 
-    const float K_distance = 0.0004f;  // 稍微降低前后增益，有助于靠近时平稳减速
-    const float K_turn = 0.004f;       // 略微降低转向增益，防止转向过于激进
-
     // PID参数
-    const float Kp = 0.0002f;    // 增加比例增益，增强响应性，但需注意可能引起的过冲
-    const float Ki = 0.0001f;    // 积分增益保持较低，防止积分累积过快
-    const float Kd = 0.001f;     // 增加微分增益，改善接近目标时的震荡控制
-
-        
-    const float Kp_angle = 0.0002f;    // 增加比例增益，增强响应性，但需注意可能引起的过冲
-    const float Ki_angle = 0.0001f;    // 积分增益保持较低，防止积分累积过快
-    const float Kd_angle = 0.001f;     // 增加微分增益，改善接近目标时的震荡控制
-
-    const float dt = 0.005f;       // 控制周期不变
-        
-    // 定义速度上限
-    const float MAX_FORWARD_SPEED = FORWARD_SPEED;   // 0.15 m/s
-    const float MAX_BACKWARD_SPEED = 0.10f;            // 限制后退速度（0.10 m/s）
+    const float Kp = 0.0005f;
+    const float Ki = 0.001f;
+    const float Kd = 0.001f;
+    const float Kp_angle = 0.0001f;
+    const float Ki_angle = 0.0005f;
+    const float Kd_angle = 0.003f;
+    const float dt = 0.005f;
     
-    // 计算误差：水平误差与距离误差
-    int error_x = ball_x - BALL_CENTER_X;  //320
-    //int error_y = ball_y - BALL_CENTER_Y;  //320
-    float error_distance = ball_distance - TARGET_DISTANCE; //900 400
+    // 速度上限
+    const float MAX_FORWARD_SPEED = FORWARD_SPEED;
+    const float MAX_BACKWARD_SPEED = 0.10f;
     
+    // 计算误差
+    float error_distance = ball_distance - TARGET_DISTANCE;
+    float angle_weight = 1.0f;
+    if (ball_distance > TARGET_DISTANCE * 1.4f) {
+        angle_weight = 0.8f;
+    } else if (ball_distance < TARGET_DISTANCE * 0.8f) {
+        angle_weight = 0.5f;
+    }
+    float error_angle = ball_angle * angle_weight;
     
-    // 积分项（带抗饱和）
+    // 更新积分项
     integral_distance += error_distance * dt;
-    if (fabs(error_distance) > 0.5f * TARGET_DISTANCE) {
-        integral_distance = 0.0f;  // 误差过大时复位积分
-    }
+    if (fabs(error_distance) > 0.5f * TARGET_DISTANCE)
+        integral_distance = 0.0f;
+    integral_angle += error_angle * dt;
+    if (fabs(error_angle) > 0.5f * BALL_CENTER_X)
+        integral_angle = 0.0f;
     
-    integral_angle += ball_angle * dt;
-    if (abs(ball_angle) > 0.5f * BALL_CENTER_X) {
-        integral_angle = 0.0f;  // 误差过大时复位积分
-    }
-
-
-    // 微分项
-    float derivative = (error_distance - prev_error_distance) / dt;
+    // 计算微分项
+    float derivative_distance = (error_distance - prev_error_distance) / dt;
     prev_error_distance = error_distance;
+    float derivative_angle = (error_angle - prev_error_angle) / dt;
+    prev_error_angle = error_angle;
     
-    float derivative_angle = (ball_angle - prev_error_angle) / dt;
-    prev_error_angle = ball_angle;
-
-    // 计算速度
-//    Vx = Kp * error_distance + Ki * integral_distance + Kd * derivative;
-//    
-    static float last_Vx = 0.0f;
-    Vx = 0.7f * last_Vx + 0.3f * (Kp*error_distance + Ki*integral_distance + Kd*derivative);
-    last_Vx = Vx;
-    // 计算转向速度
-    Vz = Kp_angle * ball_angle + Ki_angle * integral_angle + Kd_angle * derivative_angle;
-    Vz= -Vz;
+    // 计算PID输出
+    float pid_output_x = Kp * error_distance + Ki * integral_distance + Kd * derivative_distance;
+    Vx = pid_output_x;
+    Vz = -(Kp_angle * error_angle + Ki_angle * integral_angle + Kd_angle * derivative_angle);
+    
     // 限幅处理
-    Vx = fminf(FORWARD_SPEED, fmaxf(-MAX_BACKWARD_SPEED, Vx));
-    // 限幅处理
+    Vx = fminf(MAX_FORWARD_SPEED, fmaxf(-MAX_BACKWARD_SPEED, Vx));
     Vz = fminf(TURN_SPEED, fmaxf(-TURN_SPEED, Vz));
-
-    // 动态死区：随速度降低逐步缩小（毫米单位）
-    float dynamic_deadzone = 50.0f * (1.0f - fabs(Vx)/MAX_FORWARD_SPEED); // 死区范围50-0mm
-    if (fabs(error_distance) < dynamic_deadzone) {
-        Vx = 0;
-        integral_distance = 0;  // 进入死区时复位积分
+    
+    // 调整靠近球时的运动策略
+    int error_x = ball_x - BALL_CENTER_X;
+    int error_y = ball_y - BALL_CENTER_Y;
+    if (ball_distance > 1.3*TARGET_DISTANCE) {
+        // 当球较远时，若横向误差大于50则先小幅后退调整角度，
+        // 否则限制前进速度
+        if (abs(error_x) > 50){
+            Vx = -0.05f;  // 小速后退帮助调整
+            Vz = -Vz;
+        }
+        else
+            Vx = fminf(Vx, FORWARD_SPEED);
+    } else {
+        // 当球较近时，若误差太小或检测到负误差，则停车
+        if (fabs(error_distance) < 60)
+            Vx = fminf(Vx, 0.04*FORWARD_SPEED);
+        else if (error_distance < 0)
+            Vx = -0.05f;  // 小速后退帮助调整
+            Vx = fminf(Vx, 0.2*FORWARD_SPEED);
     }
     
-    // ① 前后运动控制（基于距离误差） 1.1 0.7  0.08
-//    if (fabsf(error_distance) < DIST_DEADZONE && abs(error_y)<10 ) {
-//        // 当距离在容差范围内，认为达到目标，不运动
-//        Vx = 0;
-//    }
-//    else if (error_distance> DIST_DEADZONE){  
-//        // 球太远，前进
-//        Vx = K_distance * error_distance;
-
-//        if (Vx > MAX_FORWARD_SPEED) {
-//            Vx = MAX_FORWARD_SPEED;
-//        }
-//    }
-//    else {  
-//        // 球太近，后退
-//        // 加入一个负误差死区：如果误差大于 -0.05m，则不后退
-//        if (error_distance > -DIST_DEADZONE) {
-//            Vx = 0;
-//        } else {
-//            Vx = K_distance * error_distance;  // 结果为负
-//            if (Vx < -MAX_BACKWARD_SPEED) {
-//                Vx = MAX_BACKWARD_SPEED;
-//            }
-//        }
-//    }
-    
-    // ② 左右转向控制（基于水平误差）
-//    if (abs(error_x) < BALL_DEADZONE_X) {
-//        Vz = 0;
-//    }
-//    else {
-//        Vz = -K_turn * error_x*3;  // 负号：当球在右侧（error_x正）时，产生负转向信号，车头向左
-//    }
-//    if (Vz > TURN_SPEED)  Vz = TURN_SPEED;
-//    if (Vz < -TURN_SPEED) Vz = -TURN_SPEED;
-//    
-    //320 300  30       这里换成x                          
-    if ((abs(error_x) < BALL_DEADZONE_X) && (fabs(error_distance) < DIST_DEADZONE)) {
+    // 稳定计数
+    if ((abs(error_x) < ANGLE_DEADZONE) && (abs(error_y) < DIST_DEADZONE))
         stable_count++;
-    } 
-    else {
+    else
         stable_count = 0;
-    }
-
-//    if (stable_count >= STABLE_THRESHOLD) {
-//        current_mode2 = BALL_STABLE;
-//    }
     
-    //USART_SendString();
-    // 输出目标速度给运动学逆解函数 这列movex和x感觉一样
-    Move_X=Vx;
-    Move_Z=Vz;
+    // 输出目标速度
+    Move_X = Vx;
+    Move_Z = Vz;
     Get_Target_Encoder(Vx, Vz);
-    
-    
-    //后面在等判断出去
 }
-
 
 /**************************************************************************
 Function: Bluetooth_Control
@@ -787,7 +731,7 @@ void Lidar_Avoid(void)
 	if(calculation_angle_cnt < 8)						//小于8点不需要避障，去除一些噪点
 	{
 		if((Move_X += 0.1)>=Aovid_Speed)							//避障的速度设定为260，逐渐增加到260可稍微平滑一些
-			Move_X = 0.15;
+			Move_X = 0.10;
 		Move_Z = 0;										//不避障时不需要转弯
 	}
 

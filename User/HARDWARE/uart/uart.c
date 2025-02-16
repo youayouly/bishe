@@ -163,7 +163,6 @@ void parse_received_data(uint8_t* data) {
 if (parsed_ball_detected == 1 || parsed_ball_detected == 2) {
     // 首次检测到球时不检查突变
     if (prev_valid) {
-        // 动态阈值（根据距离调整）
         float dynamic_threshold = prev_dist * 0.3f; // 距离越远允许变化越大
         dynamic_threshold = fmaxf(100.0f, fminf(300.0f, dynamic_threshold));
         
@@ -171,14 +170,21 @@ if (parsed_ball_detected == 1 || parsed_ball_detected == 2) {
             abs(y - prev_y) > dynamic_threshold || 
             abs(dist - prev_dist) > dynamic_threshold) {
             USART_SendString("ERR:JUMP\n");
+            // 重置历史数据，允许下一次检测直接更新
+            prev_x = x;
+            prev_y = y;
+            prev_dist = dist;
+            prev_angle = angle;
+            prev_valid = 1;
             return;
         }
     }
     
-    // 更新历史数据
+    // 正常更新历史数据
     prev_x = x;
     prev_y = y;
     prev_dist = dist;
+    prev_angle = angle;
     prev_valid = 1;
 } else {
     prev_valid = 0;
@@ -231,7 +237,7 @@ if (parsed_ball_detected == 1 || parsed_ball_detected == 2) {
     // 发送更新后的数据
 //    char response[100];
 //    int len = snprintf(response, sizeof(response), "$%hhu,%hd,%hd,%hd,%hd\n,%.2f\n",
-//                       ball_detected, ball_x, ball_y, ball_distance, ball_angle, servo_action_counter);
+//                       ball_detected, ball_x, ball_y, ball_distance, ball_angle, Vx);
 //    if (len > 0) {
 //        USART_SendString(response);
 //        //USART_SendString();

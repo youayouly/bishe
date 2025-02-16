@@ -5,6 +5,7 @@ import math
 import configparser
 from joblib import Parallel, delayed
 
+
 class BallDetector:
     def __init__(self, show_display=False, record_video=False, focal_length=554.26, real_diameter=0.04, config_file='/usr/src/ai/config.txt'):
         # 读取配置文件
@@ -16,6 +17,7 @@ class BallDetector:
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)  # 设置分辨率
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self.cap.set(cv2.CAP_PROP_FPS, 30)  # 设置帧率
+        self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)     # 关闭自动对焦
         self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))  # 设置格式为 MJPG
         
         # 物理参数
@@ -25,7 +27,7 @@ class BallDetector:
         # 图像处理参数
         self.show_display = show_display
         self.record_video = record_video
-        self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
+        self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         
         # 橙色HSV阈值
         self.orange_lower = np.array([config.getint('DEFAULT', 'orange_lower_h'),
@@ -61,6 +63,8 @@ class BallDetector:
         self.smoothing_window = config.getint('DEFAULT', 'smoothing_window')
         self.x_history = []
         self.y_history = []
+        self.distance_history = []
+        self.angle_history = []
         
         if self.show_display:
             self._init_trackbars()
@@ -79,6 +83,33 @@ class BallDetector:
         # 预分配缓冲区
         self.gray_buf = np.zeros((480, 640), dtype=np.uint8)
         self.hsv_buf = np.zeros((480, 640, 3), dtype=np.uint8)
+        
+        # --------------------- 增强版 Kalman 滤波器 初始化 ---------------------
+        # 状态变量: [x, y, dx, dy, diameter, ddiameter]（图像坐标和直径相关）
+        # 测量变量: [x, y, diameter]
+        self.kalman = cv2.KalmanFilter(6, 3)
+        self.kalman.transitionMatrix = np.array([
+            [1, 0, 1, 0, 0, 0],
+            [0, 1, 0, 1, 0, 0],
+            [0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 1, 1],
+            [0, 0, 0, 0, 0, 1]
+        ], np.float32)
+        
+        self.kalman.measurementMatrix = np.array([
+            [1, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0]
+        ], np.float32)
+        
+        self.kalman.processNoiseCov = np.eye(6, dtype=np.float32) * 0.01
+        self.kalman.measurementNoiseCov = np.eye(3, dtype=np.float32) * 0.1
+        self.kalman.errorCovPost = np.eye(6, dtype=np.float32) * 100
+        
+        self.last_prediction = None
+        self.miss_count = 0
+        # --------------------- 增强版 Kalman 滤波器 完毕 ---------------------
 
     def _load_calibration(self, calibration_file):
         """加载相机标定参数"""
@@ -238,18 +269,61 @@ class BallDetector:
         return cv2.inpaint(frame, glare_mask, 3, cv2.INPAINT_TELEA)
 
     def _calculate_metrics(self, ball_info, frame):
-        """计算距离、角度及滤波处理"""
+        """改进的指标计算、增强版卡尔曼滤波以及连续帧平均平滑"""
         try:
             x, y, diameter = ball_info
-            x, y = int(x), int(y)
-            if diameter <= 0 or not (0 <= x < 640 and 0 <= y < 480):
-                return 0, 0, 0, 0, 0, frame
-            distance = (self.real_diameter * self.focal_length) / max(diameter, 1e-6)
-            dx = x - 320  # 图像中心为基准
-            angle = math.degrees(math.atan(dx / self.focal_length)) if self.focal_length != 0 else 0
+            measurement = np.array([[x], [y], [diameter]], dtype=np.float32)
+            
+            # 执行预测步骤
+            _ = self.kalman.predict()
+            
+            # 判断测量是否有效
+            if not (0 <= x < 640 and 0 <= y < 480 and diameter > 0):
+                self.miss_count += 1
+                if self.miss_count > 5:  # 连续5帧无效则重置卡尔曼滤波器
+                    self.kalman.init(self.kalman.statePost.shape[0], 3)
+                    self.last_prediction = None
+                    return 0, 0, 0, 0, 0, frame
+            else:
+                self.miss_count = 0
+                # 校正步骤，更新卡尔曼状态
+                self.kalman.correct(measurement)
+            
+            # 获取校正后的状态
+            state = self.kalman.statePost
+            
+            # 计算实际距离（根据直径）和角度（根据x与图像中心偏差）
+            distance = (self.real_diameter * self.focal_length) / max(state[4, 0], 1e-6)
+            dx = state[0, 0] - 320
+            angle = math.degrees(math.atan(dx / self.focal_length))
+            
+            # 将当前结果加入历史记录
+            self.x_history.append(state[0, 0])
+            self.y_history.append(state[1, 0])
+            self.distance_history.append(distance)
+            self.angle_history.append(angle)
+            
+            # 保持历史列表长度不超过 smoothing_window 帧
+            if len(self.x_history) > self.smoothing_window:
+                self.x_history.pop(0)
+                self.y_history.pop(0)
+                self.distance_history.pop(0)
+                self.angle_history.pop(0)
+            
+            # 计算连续帧平均
+            smooth_x = sum(self.x_history) / len(self.x_history)
+            smooth_y = sum(self.y_history) / len(self.y_history)
+            smooth_distance = sum(self.distance_history) / len(self.distance_history)
+            smooth_angle = sum(self.angle_history) / len(self.angle_history)
+            
+            # 保存最后有效预测（平滑后的结果）
+            self.last_prediction = (smooth_x, smooth_y, smooth_distance, smooth_angle)
+            
             if self.show_display or self.record_video:
-                self._draw_debug_info(frame, x, y, distance, angle)
-            return 1, x, y, distance, angle, frame
+                self._draw_debug_info(frame, int(smooth_x), int(smooth_y), smooth_distance, smooth_angle)
+            
+            return 1, smooth_x, smooth_y, smooth_distance, smooth_angle, frame
+
         except Exception as e:
             print("指标计算异常:", e)
             return 0, 0, 0, 0, 0, frame
@@ -264,7 +338,6 @@ class BallDetector:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
         cv2.putText(frame, f"Angle: {angle:.1f} deg", (10, 70),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-        # 如果需要显示FPS信息，则调用 self.fps（已在__init__中初始化）
         cv2.putText(frame, f"FPS: {self.fps:.2f}", (10, 110),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
@@ -307,6 +380,7 @@ class BallDetector:
             if self.video_writer is not None:
                 self.video_writer.release()
             cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     detector = BallDetector(show_display=False, record_video=False)
