@@ -54,7 +54,7 @@ extern uint8_t ball_detected_counter;
 
 // 比例控制参数
 #define KP 0.005f       // 转向比例系数
-#define TARGET_DISTANCE    450  // 目标跟踪距离 (ms)
+#define TARGET_DISTANCE    475  // 目标跟踪距离 (ms)
 #define DETECTION_THRESHOLD  2       // 连续检测阈值
 
 

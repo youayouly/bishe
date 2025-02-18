@@ -265,8 +265,8 @@ void Track_Ball(void) {
     const float Kp = 0.005f;
     const float Ki = 0.001f;
     const float Kd = 0.005f;
-    const float Kp_angle = 0.0001f;
-    const float Ki_angle = 0.0001f;
+    const float Kp_angle = 0.00015f;
+    const float Ki_angle = 0.00010f;
     const float Kd_angle = 0.005f;
     const float dt = 0.005f;
     
@@ -310,7 +310,7 @@ void Track_Ball(void) {
     // 调整靠近球时的运动策略
     int error_x = ball_x - BALL_CENTER_X;
     int error_y = ball_y - BALL_CENTER_Y;
-    if ( abs(error_x) > 50) {
+    if ( abs(error_x) > 40) {
         // 当球较远时，若横向误差大于50则先小幅后退调整角度，
         // 否则限制前进速度
 
@@ -319,16 +319,21 @@ void Track_Ball(void) {
     
         
             Vx = fminf(Vx, FORWARD_SPEED);
-    } else {
+    } 
+    else {
         // 当球较近时，若误差太小或检测到负误差，则停车
         if ( error_distance < 130 && error_distance > 30)
-            Vx = fminf(Vx, 0.5* FORWARD_SPEED);
+            Vx = fminf(Vx, 0.3* FORWARD_SPEED);
         else if (error_distance < 30 && error_distance>=0){
           Vx=0;
         }
+        else if (error_distance>130){
+            Vx=Vx*3;
+        }
         else if (error_distance < 0)
             Vx = -0.1f;  // 小速后退帮助调整
-            Vx = fminf(Vx, 0.2*FORWARD_SPEED);
+            Vx = fminf(Vx, 0.3*FORWARD_SPEED);
+            Vx = fmaxf(Vx,-0.3*MAX_BACKWARD_SPEED);
     }
     
     // 稳定计数
