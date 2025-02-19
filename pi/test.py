@@ -227,11 +227,11 @@ class BallDetector:
         try:
             # 去畸变处理（直接调用 undistort）
             undistorted = cv2.undistort(frame, self.camera_matrix, self.distortion_coefficients)
-            # 复用灰度图计算HSV中的V通道
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            hsv[:, :, 2] = gray  # 使用灰度图替代V通道
-            frame_modified = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+            # 使用预分配缓冲区
+            cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY, dst=self.gray_buf)
+            cv2.cvtColor(frame, cv2.COLOR_BGR2HSV, dst=self.hsv_buf)
+            self.hsv_buf[:, :, 2] = self.gray_buf  # 使用灰度图替代V通道
+            frame_modified = cv2.cvtColor(self.hsv_buf, cv2.COLOR_HSV2BGR)
             
             glare_free = self._glare_suppression(frame_modified)
             
@@ -261,11 +261,10 @@ class BallDetector:
 
     def _glare_suppression(self, frame):
         """反光抑制处理，根据图像平均亮度决定是否启用"""
-        avg_brightness = np.mean(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+        avg_brightness = np.mean(self.gray_buf)
         if avg_brightness < 100:  # 低光照时不处理反光
             return frame
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        _, glare_mask = cv2.threshold(gray, self.glare_thresh, 255, cv2.THRESH_BINARY)
+        _, glare_mask = cv2.threshold(self.gray_buf, self.glare_thresh, 255, cv2.THRESH_BINARY)
         return cv2.inpaint(frame, glare_mask, 3, cv2.INPAINT_TELEA)
 
     def _calculate_metrics(self, ball_info, frame):
