@@ -29,7 +29,7 @@ int16_t ball_distance = 0;
 
 int16_t stable_count = 0;
 const int STABLE_THRESHOLD = 5; // 稳定阈值，连续5次检测到球稳定
-const int SERVO_GRAB_POSITION = 550; // 舵机抓取位置
+const int SERVO_GRAB_POSITION = 500; // 舵机抓取位置
 const int SERVO_RELEASE_POSITION = 1700; // 舵机释放位置
 uint32_t grab_start_time = 0;
 
@@ -256,25 +256,23 @@ float filter_spike(float new_distance) {
 }
 
 void Track_Ball(void) {
-    // 补码转换
     if (ball_angle > 32767) {
         ball_angle = ball_angle - 65536;
     }
     
-    // PID参数
-    const float Kp = 0.005f;
-    const float Ki = 0.001f;
-    const float Kd = 0.005f;
-    const float Kp_angle = 0.00015f;
-    const float Ki_angle = 0.00010f;
+    const float Kp = 0.001f;
+    const float Ki = 0.002f;
+    const float Kd = 0.015f;
+    const float Kp_angle = 0.0001f;
+    const float Ki_angle = 0.00005f;
     const float Kd_angle = 0.005f;
     const float dt = 0.005f;
     
-    // 速度上限
-    const float MAX_FORWARD_SPEED = FORWARD_SPEED;
+    const float MAX_FORWARD_SPEED = 0.5f;
     const float MAX_BACKWARD_SPEED = 0.10f;
+    const float MIN_SPEED = 0.02f;
+    const float TARGET_DISTANCE = 0.45f;
     
-    // 计算误差
     float error_distance = ball_distance - TARGET_DISTANCE;
     float angle_weight = 1.0f;
     if (ball_distance > TARGET_DISTANCE * 1.4f) {
@@ -284,7 +282,6 @@ void Track_Ball(void) {
     }
     float error_angle = ball_angle * angle_weight;
     
-    // 更新积分项
     integral_distance += error_distance * dt;
     if (fabs(error_distance) > 0.5f * TARGET_DISTANCE)
         integral_distance = 0.0f;
@@ -292,62 +289,54 @@ void Track_Ball(void) {
     if (fabs(error_angle) > 0.5f * BALL_CENTER_X)
         integral_angle = 0.0f;
     
-    // 计算微分项
     float derivative_distance = (error_distance - prev_error_distance) / dt;
     prev_error_distance = error_distance;
     float derivative_angle = (error_angle - prev_error_angle) / dt;
     prev_error_angle = error_angle;
     
-    // 计算PID输出
     float pid_output_x = Kp * error_distance + Ki * integral_distance + Kd * derivative_distance;
     Vx = pid_output_x;
     Vz = -(Kp_angle * error_angle + Ki_angle * integral_angle + Kd_angle * derivative_angle);
     
-    // 限幅处理
-    Vx = fminf(MAX_FORWARD_SPEED, fmaxf(-MAX_BACKWARD_SPEED, Vx));
-    Vz = fminf(TURN_SPEED, fmaxf(-TURN_SPEED, Vz));
-    
-    // 调整靠近球时的运动策略
-    int error_x = ball_x - BALL_CENTER_X;
-    int error_y = ball_y - BALL_CENTER_Y;
-    if ( abs(error_x) > 40) {
-        // 当球较远时，若横向误差大于50则先小幅后退调整角度，
-        // 否则限制前进速度
-
-            Vx = -0.05f;  // 小速后退帮助调整
-            Vz = -Vz;
-    
-        
-            Vx = fminf(Vx, FORWARD_SPEED);
-    } 
-    else {
-        // 当球较近时，若误差太小或检测到负误差，则停车
-        if ( error_distance < 130 && error_distance > 30)
-            Vx = fminf(Vx, 0.3* FORWARD_SPEED);
-        else if (error_distance < 30 && error_distance>=0){
-          Vx=0;
-        }
-        else if (error_distance>130){
-            Vx=Vx*3;
-        }
-        else if (error_distance < 0)
-            Vx = -0.1f;  // 小速后退帮助调整
-            Vx = fminf(Vx, 0.3*FORWARD_SPEED);
-            Vx = fmaxf(Vx,-0.3*MAX_BACKWARD_SPEED);
+    float dynamic_max_speed = MAX_FORWARD_SPEED;
+    if (ball_distance < 500) {
+        dynamic_max_speed = MAX_FORWARD_SPEED * (ball_distance / 500.0f);
+        dynamic_max_speed = fmaxf(MIN_SPEED, dynamic_max_speed);
     }
     
-    // 稳定计数
+    Vx = fminf(dynamic_max_speed, fmaxf(-MAX_BACKWARD_SPEED, Vx));
+    Vz = fminf(TURN_SPEED, fmaxf(-TURN_SPEED, Vz));
+    
+    int error_x = ball_x - BALL_CENTER_X;
+    int error_y = ball_y - BALL_CENTER_Y;
+    
+    // 新增：捡球后停止并重置
+    if (ball_distance < 200) {  // 假设 0.20 米为捡球阈值
+        Vx = 0.0f;  // 停止前进
+        Vz = 0.0f;  // 停止旋转
+        stable_count = 0;  // 重置稳定计数
+    } else if (ball_distance == 0 && ball_x == 0 && ball_y == 0) {  // 无目标时停止
+        Vx = 0.0f;
+        Vz = 0.0f;
+    } else if (abs(error_x) > 40) {
+        Vx = -0.05f;  // 小速后退调整角度
+        Vz = -Vz;
+        Vx = fminf(Vx, MAX_FORWARD_SPEED);
+    } else if (error_distance < 130 && error_distance > 30) {
+        Vx = fminf(Vx, 0.2f * MAX_FORWARD_SPEED);
+    } else if (error_distance <= 30 && error_distance >= 0) {
+        Vx = fminf(Vx, 0.1f * MAX_FORWARD_SPEED);
+    }
+    
     if ((abs(error_x) < ANGLE_DEADZONE) && (abs(error_y) < DIST_DEADZONE))
         stable_count++;
     else
         stable_count = 0;
     
-    // 输出目标速度
     Move_X = Vx;
     Move_Z = Vz;
     Get_Target_Encoder(Vx, Vz);
 }
-
 /**************************************************************************
 Function: Bluetooth_Control
 Input   : none
@@ -378,71 +367,7 @@ Output  : none
 //	Move_X=Move_X/1000;     Move_Z=-Move_Z;
 //}
 
-/**************************************************************************
-Function: PS2_Control
-Input   : none
-Output  : none
-函数功能：PS2手柄控制
-入口参数: 无 
-返回  值：无
-**************************************************************************/	 	
-//void PS2_Control(void)
-//{
-//	int LY,RX;									//手柄ADC的值
-//	int Threshold=20; 							//阈值，忽略摇杆小幅度动作
-//	static u8 Key1_Count = 0,Key2_Count = 0;	//用于控制读取摇杆的速度
-//	//转化为128到-128的数值
-//	LY=-(PS2_LY-128);//左边Y轴控制前进后退
-//	RX=-(PS2_RX-128);//右边X轴控制转向
 
-//	if(LY>-Threshold&&LY<Threshold)	LY=0;
-//	if(RX>-Threshold&&RX<Threshold)	RX=0;		//忽略摇杆小幅度动作
-//	
-//	Move_X = (RC_Velocity/128)*LY;				//速度控制，力度表示速度大小
-//	if(Car_Num == Akm_Car)						//阿克曼车转向控制，力度表示转向角度
-//		Move_Z = -(RC_Turn_Velocity/128)*RX;	
-//	else										//其他车型转向控制
-//	{
-//		if(Move_X>=0)
-//			Move_Z = -(RC_Turn_Velocity/128)*RX;	//转向控制，力度表示转向速度
-//		else
-//			Move_Z = (RC_Turn_Velocity/128)*RX;
-//	}
-//	if (PS2_KEY == PSB_L1) 					 	//按下左1键加速（按键在顶上）
-//	{	
-//		if((++Key1_Count) == 20)				//调节按键反应速度
-//		{
-//			PS2_KEY = 0;
-//			Key1_Count = 0;
-//			if((RC_Velocity += X_Step)>MAX_RC_Velocity)				//前进最大速度1230
-//				RC_Velocity = MAX_RC_Velocity;
-//			if(Car_Num != Akm_Car)								//非阿克曼车可调节转向速度
-//			{
-//				if((RC_Turn_Velocity += Z_Step)>MAX_RC_Turn_Bias)	//转向最大速度325
-//					RC_Turn_Velocity = MAX_RC_Turn_Bias;
-//			}
-//		}
-//	}
-//	else if(PS2_KEY == PSB_R1) 					//按下右1键减速
-//	{
-//		if((++Key2_Count) == 20)
-//		{
-//			PS2_KEY = 0;
-//			Key2_Count = 0;
-//			if((RC_Velocity -= X_Step)<MINI_RC_Velocity)			//前后最小速度210
-//				RC_Velocity = MINI_RC_Velocity;
-//			
-//			if(Car_Num != Akm_Car)								//非阿克曼车可调节转向速度
-//			{
-//				if((RC_Turn_Velocity -= Z_Step)<MINI_RC_Turn_Velocity)//转向最小速度45
-//				RC_Turn_Velocity = MINI_RC_Turn_Velocity;
-//			}
-//		}
-//	}
-//	else
-//		Key2_Count = 0,Key2_Count = 0;			//读取到其他按键重新计数
-//	Move_X=Move_X/1000;  Move_Z=-Move_Z;
-//}
 /**************************************************************************
 Function: Get_Velocity_From_Encoder
 Input   : none
@@ -526,36 +451,7 @@ void Get_Target_Encoder(float Vx,float Vz)
 			Servo_PWM=target_limit_int(Servo_PWM,800,2200);	//Servo PWM value limit //舵机PWM值限幅
 
 	}
-//	else if(Car_Num==Diff_Car)											//差速小车
-//	{
-//		  if(Vx<0) Vz=-Vz;
-//	      else     Vz=Vz;
-//			//Inverse kinematics //运动学逆解
-//		   MotorA.Target_Encoder = Vx - Vz * Wheelspacing / 2.0f; //计算出左轮的目标速度
-//		   MotorB.Target_Encoder = Vx + Vz * Wheelspacing / 2.0f; //计算出右轮的目标速度
-//			//Wheel (motor) target speed limit //车轮(电机)目标速度限幅
-//		   MotorA.Target_Encoder=target_limit_float( MotorA.Target_Encoder,-amplitude,amplitude); 
-//	       MotorB.Target_Encoder=target_limit_float( MotorB.Target_Encoder,-amplitude,amplitude); 
-//	}  
-//	else if(Car_Num==Small_Tank_Car)
-//	{
-//		  if(Vx<0) Vz=-Vz;
-//	      else     Vz=Vz;
-//		  MotorA.Target_Encoder = Vx-Vz*Wheelspacing/2.0f;//计算出左轮的目标速度
-//		  MotorB.Target_Encoder = Vx+Vz*Wheelspacing/2.0f;//计算出右轮的目标速度
-//		//Wheel (motor) target speed limit //车轮(电机)目标速度限幅
-//		  MotorA.Target_Encoder=target_limit_float( MotorA.Target_Encoder,-amplitude,amplitude); 
-//	      MotorB.Target_Encoder=target_limit_float( MotorB.Target_Encoder,-amplitude,amplitude); 
-//	}
-//	else if(Car_Num==Big_Tank_Car)
-//	{
-//		  if(Vx<0) Vz=-Vz;
-//	      else     Vz=Vz;
-//		  MotorA.Target_Encoder = Vx-Vz*Wheelspacing/2.0f;//计算出左轮的目标速度
-//		  MotorB.Target_Encoder = Vx+Vz*Wheelspacing/2.0f;//计算出右轮的目标速度
-//		  MotorA.Target_Encoder=target_limit_float( MotorA.Target_Encoder,-amplitude,amplitude); 
-//	      MotorB.Target_Encoder=target_limit_float( MotorB.Target_Encoder,-amplitude,amplitude); 
-//	}
+
 }
 /**************************************************************************
 Function: Get_Motor_PWM
