@@ -127,10 +127,10 @@ void parse_received_data(uint8_t* data) {
         return;
     }
 
-    if ((parsed_ball_detected != 1 && parsed_ball_detected != 2) || (dist < 350 && dist > 0)) {
-        USART_SendString("ERR:VAL\n");
-        return;
-    }
+//    if ((parsed_ball_detected != 1 && parsed_ball_detected != 2) || (dist < 350 && dist > 0)) {
+//        USART_SendString("ERR:VAL\n");
+//        return;
+//    }
 
     // Í»±ä¼ì²â
     if (parsed_ball_detected == 1 || parsed_ball_detected == 2) {

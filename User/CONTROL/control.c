@@ -1,4 +1,3 @@
-
 #include "control.h"
 #include "Lidar.h"
 #include "MPU6050.h"
@@ -268,10 +267,10 @@ void Track_Ball(void) {
     const float Kd_angle = 0.005f;
     const float dt = 0.005f;
     
-    const float MAX_FORWARD_SPEED = 0.5f;
+    const float MAX_FORWARD_SPEED = 0.15f;
     const float MAX_BACKWARD_SPEED = 0.10f;
     const float MIN_SPEED = 0.02f;
-    const float TARGET_DISTANCE = 0.45f;
+
     
     float error_distance = ball_distance - TARGET_DISTANCE;
     float angle_weight = 1.0f;
@@ -310,24 +309,31 @@ void Track_Ball(void) {
     int error_x = ball_x - BALL_CENTER_X;
     int error_y = ball_y - BALL_CENTER_Y;
     
-    // 新增：捡球后停止并重置
-    if (ball_distance < 200) {  // 假设 0.20 米为捡球阈值
-        Vx = 0.0f;  // 停止前进
-        Vz = 0.0f;  // 停止旋转
-        stable_count = 0;  // 重置稳定计数
-    } else if (ball_distance == 0 && ball_x == 0 && ball_y == 0) {  // 无目标时停止
-        Vx = 0.0f;
-        Vz = 0.0f;
-    } else if (abs(error_x) > 40) {
+         if (abs(error_x) > 40) {
         Vx = -0.05f;  // 小速后退调整角度
         Vz = -Vz;
         Vx = fminf(Vx, MAX_FORWARD_SPEED);
-    } else if (error_distance < 130 && error_distance > 30) {
+    }
+         
+    // 新增：捡球后停止并重置
+    if (ball_distance < 450) {  // 假设 0.20 米为捡球阈值
+      
+       Vx = fminf(Vx, 0.05f * MAX_FORWARD_SPEED);
+        stable_count = 0;  // 重置稳定计数
+    } 
+//    else if (ball_distance == 0 && ball_x == 0 && ball_y == 0) {  // 无目标时停止
+//        Vx = 0.0f;
+//        Vz = 0.0f;
+//    } 
+
+   else if (error_distance < 100 && error_distance > 40) {
         Vx = fminf(Vx, 0.2f * MAX_FORWARD_SPEED);
-    } else if (error_distance <= 30 && error_distance >= 0) {
+    } else if (error_distance <= 40 && error_distance >= 0) {
         Vx = fminf(Vx, 0.1f * MAX_FORWARD_SPEED);
     }
     
+
+        
     if ((abs(error_x) < ANGLE_DEADZONE) && (abs(error_y) < DIST_DEADZONE))
         stable_count++;
     else

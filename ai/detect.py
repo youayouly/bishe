@@ -71,7 +71,7 @@ class BallDetector:
         self.fps = 0.0
         
         self.roi_top = 0
-        self.roi_bottom = 300
+        self.roi_bottom = 320
         self.roi_height = self.roi_bottom - self.roi_top
         
         self.gray_buf = np.zeros((self.roi_height, self.width), dtype=np.uint8)
@@ -98,6 +98,9 @@ class BallDetector:
         self.last_prediction = None
         self.miss_count = 0
         self.last_valid_result = (0, 0, 0, 0, 0, None)
+        self.locked_ball = None  # 锁定最近的球
+        self.locked_time = None  # 锁定时间
+        self.lock_timeout = 10.0  # 锁定超时时间（秒）
 
     def _load_calibration(self, calibration_file):
         if calibration_file:
@@ -209,25 +212,49 @@ class BallDetector:
             all_balls = []
             for x, y, diameter in orange_balls:
                 y += self.roi_top
-                all_balls.append((x, y, diameter, 1))  # 1 表示橙色球
+                all_balls.append((x, y, diameter, 1))
             for x, y, diameter in white_balls:
                 y += self.roi_top
-                all_balls.append((x, y, diameter, 0))  # 0 表示白色球
+                all_balls.append((x, y, diameter, 0))
             
             if not all_balls:
-                return self.last_valid_result
+                self.locked_ball = None  # 未检测到球时解锁
+                self.locked_time = None
+                return 0, 0, 0, 0, 0, frame
             
-            # 按 Y 坐标从大到小排序（最底部优先），然后在同等 Y 高度按光学距离排序
-            all_balls.sort(key=lambda b: (-b[1], (self.real_diameter * self.focal_length) / max(b[2], 1e-6)))
+            # 计算每个球的距离
+            balls_with_distance = []
+            for x, y, diameter, ball_type in all_balls:
+                distance = (self.real_diameter * self.focal_length) / max(diameter, 1e-6)
+                balls_with_distance.append((x, y, diameter, ball_type, distance))
             
-            # 选择最底部的球
-            x, y, diameter, ball_type = all_balls[0]
+            # 如果已锁定球，尝试匹配最近的球
+            if self.locked_ball is not None and time.time() - self.locked_time < self.lock_timeout:
+                locked_x, locked_y, locked_diameter, locked_type, locked_distance = self.locked_ball
+                # 查找与锁定球最接近的球（基于位置和直径）
+                closest_ball = min(balls_with_distance, key=lambda b: (
+                    (b[0] - locked_x) ** 2 + (b[1] - locked_y) ** 2 + ((b[2] - locked_diameter) / 10) ** 2
+                ), default=None)
+                if closest_ball and abs(closest_ball[4] - locked_distance) < 0.2:  # 距离变化小于 0.2m
+                    x, y, diameter, ball_type, distance = closest_ball
+                    result = self._calculate_metrics((x, y, diameter), frame, ball_type)
+                    self.last_valid_result = result
+                    self.locked_ball = (x, y, diameter, ball_type, distance)  # 更新锁定球
+                    return result
+            
+            # 未锁定或锁定超时，选择距离最近的球
+            closest_ball = min(balls_with_distance, key=lambda b: b[4])  # 按距离排序
+            x, y, diameter, ball_type, distance = closest_ball
             result = self._calculate_metrics((x, y, diameter), frame, ball_type)
             self.last_valid_result = result
+            self.locked_ball = (x, y, diameter, ball_type, distance)  # 锁定最近的球
+            self.locked_time = time.time()  # 记录锁定时间
             return result
         except Exception as e:
             print(f"检测异常: {str(e)}")
-            return self.last_valid_result
+            self.locked_ball = None
+            self.locked_time = None
+            return 0, 0, 0, 0, 0, frame
 
     def _glare_suppression(self, frame):
         avg_brightness = np.mean(self.gray_buf)
@@ -260,7 +287,6 @@ class BallDetector:
             smooth_distance = (self.real_diameter * self.focal_length) / max(smooth_diameter, 1e-6)
             
             if smooth_distance < 0.20:
-                self.last_valid_result = (0, 0, 0, 0, 0, frame)
                 self.x_history.clear()
                 self.y_history.clear()
                 self.distance_history.clear()
@@ -312,6 +338,8 @@ class BallDetector:
         cv2.line(frame, (0, self.roi_bottom), (self.width, self.roi_bottom), (255, 0, 0), 2)
 
     def detect_and_display(self):
+        self.last_frame = None
+        self.last_update_time = time.time()
         try:
             while True:
                 start_time = time.time()
@@ -319,6 +347,12 @@ class BallDetector:
                 if not ret:
                     print("摄像头读取失败")
                     break
+                
+                if self.last_frame is not None and np.array_equal(frame, self.last_frame):
+                    print("[WARN] Frame frozen, skipping detection")
+                    time.sleep(0.01)
+                    continue
+                self.last_frame = frame.copy()
                 
                 if self.show_display:
                     self.update_settings()
@@ -335,6 +369,11 @@ class BallDetector:
                 
                 if status:
                     print(f"位置: ({x:.2f}, {y:.2f}), 距离: {distance:.2f}米, 角度: {angle:.1f}度, FPS: {self.fps:.2f}")
+                    self.last_update_time = time.time()
+                else:
+                    if time.time() - self.last_update_time > 1.0:
+                        print("[INFO] No ball detected for 1s, resetting")
+                        self.last_valid_result = (0, 0, 0, 0, 0, frame)
                 
                 if self.show_display and processed_frame is not None and processed_frame.size > 0:
                     cv2.imshow("Frame", processed_frame)

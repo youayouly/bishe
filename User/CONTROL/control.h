@@ -39,13 +39,13 @@ extern uint8_t ball_detected_counter;
 #define BALL_TIMEOUT 200 // 200*5ms=1秒超时
 //-----------在control.h中添加宏定义-----------
 #define BALL_CENTER_X      320     // 图像中心X坐标
-#define BALL_CENTER_Y      340
+#define BALL_CENTER_Y      300
 #define BALL_DEADZONE      40
 
 #define BALL_DEADZONE_X      100      // 转向死区
 #define BALL_DEADZONE_Y      20
 #define ANGLE_DEADZONE 20    // 像素单位死区
-#define DIST_DEADZONE  50 // ms
+#define DIST_DEADZONE  15 // ms
 
 
 #define STOP_DISTANCE        0.6f    // 停止距离(米)  //实际不是距离，而是视频的距离
@@ -103,7 +103,7 @@ extern float Vz;
 #define Follow_Distance 1600  //跟随距离
 #define Keep_Follow_Distance 400  //跟随保持距离
 
-#define Aovid_Speed 0.3        //避障速度
+#define Aovid_Speed 0.2        //避障速度
 
 //指示遥控控制的开关
 #define RC_ON								1	
